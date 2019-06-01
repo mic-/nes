@@ -1,0 +1,243 @@
+include incbin.e
+
+global atom asm_copy_bmp,asm_copy_bmp_and_flip,
+	    asm_convert_8b_to_555,asm_convert_8b_to_555_and_flip, 
+	    asm_convert_8b_to_565,asm_convert_8b_to_565_and_flip,
+	    asm_convert_8b_to_bgr,asm_convert_8b_to_bgr_and_flip,
+	    asm_convert_8b_to_rgb,asm_convert_8b_to_rgb_and_flip,
+	    asm_convert_555_to_bgr,asm_convert_555_to_bgr_and_flip, 
+	    asm_convert_555_to_rgb,asm_convert_555_to_rgb_and_flip, 
+	    asm_convert_565_to_bgr,asm_convert_565_to_bgr_and_flip,
+	    asm_convert_565_to_rgb,asm_convert_565_to_rgb_and_flip,
+	    asm_convert_bgr_to_555,asm_convert_bgr_to_555_and_flip,
+	    asm_convert_bgr_to_565,asm_convert_bgr_to_565_and_flip,
+	    asm_convert_bgr_to_rgb,asm_convert_bgr_to_rgb_and_flip,
+	    asm_convert_rgb_to_555,asm_convert_rgb_to_555_and_flip,
+	    asm_convert_rgb_to_565,asm_convert_rgb_to_565_and_flip
+
+
+global constant asmBMPCopyData = allocate(32),
+		bmpConvertPalette = allocate(2048)
+poke4(asmBMPCopyData+28,0)
+
+
+
+
+global procedure load_beeampee()
+sequence defproc
+integer binfile
+binfile = incbin("beeampee.dll")
+
+defproc = define_proc("asm_copy_bmp",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+20,
+asmBMPCopyData+24})
+asm_copy_bmp = defproc[1]
+
+defproc = define_proc("asm_copy_bmp_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+20,
+asmBMPCopyData+24})
+asm_copy_bmp_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_8b_to_555",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+bmpConvertPalette,
+asmBMPCopyData+24})
+asm_convert_8b_to_555 = defproc[1]
+
+defproc = define_proc("asm_convert_8b_to_555_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+bmpConvertPalette,
+asmBMPCopyData+24})
+asm_convert_8b_to_555_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_8b_to_565",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+bmpConvertPalette,
+asmBMPCopyData+24})
+asm_convert_8b_to_565 = defproc[1]
+
+defproc = define_proc("asm_convert_8b_to_565_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+bmpConvertPalette,
+asmBMPCopyData+24})
+asm_convert_8b_to_565_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_8b_to_bgr",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+bmpConvertPalette,
+asmBMPCopyData+24})
+asm_convert_8b_to_bgr = defproc[1]
+
+defproc = define_proc("asm_convert_8b_to_bgr_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+bmpConvertPalette,
+asmBMPCopyData+24})
+asm_convert_8b_to_bgr_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_555_to_bgr_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24,
+asmBMPCopyData+28})
+asm_convert_555_to_bgr_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_565_to_bgr_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24,
+asmBMPCopyData+28})
+asm_convert_565_to_bgr_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_555_to_rgb_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24,
+asmBMPCopyData+28})
+asm_convert_555_to_rgb_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_565_to_rgb_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24,
+asmBMPCopyData+28})
+asm_convert_565_to_rgb_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_bgr_to_555",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24,
+asmBMPCopyData+28})
+asm_convert_bgr_to_555 = defproc[1]
+
+defproc = define_proc("asm_convert_bgr_to_555_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24,
+asmBMPCopyData+28})
+asm_convert_bgr_to_555_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_rgb_to_x555",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24})
+asm_convert_rgb_to_555 = defproc[1]
+
+defproc = define_proc("asm_convert_rgb_to_x555_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24})
+asm_convert_rgb_to_555_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_bgr_to_565",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24})
+asm_convert_bgr_to_565 = defproc[1]
+
+defproc = define_proc("asm_convert_bgr_to_565_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24,
+asmBMPCopyData+28})
+asm_convert_bgr_to_565_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_rgb_to_565",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24})
+asm_convert_rgb_to_565 = defproc[1]
+
+defproc = define_proc("asm_convert_rgb_to_565_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24})
+asm_convert_rgb_to_565_and_flip = defproc[1]
+
+defproc = define_proc("asm_convert_bgr_to_rgb",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24})
+asm_convert_bgr_to_rgb = defproc[1]
+
+defproc = define_proc("asm_convert_bgr_to_rgb_and_flip",binfile,
+{asmBMPCopyData,
+asmBMPCopyData+4,
+asmBMPCopyData+8,
+asmBMPCopyData+12,
+asmBMPCopyData+16,
+asmBMPCopyData+24})
+asm_convert_bgr_to_rgb_and_flip = defproc[1]
+end procedure

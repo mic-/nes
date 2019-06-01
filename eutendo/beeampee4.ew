@@ -1,0 +1,910 @@
+include beeampee.def
+include winfile.ew
+
+
+global constant BEEAMPEE_VERSION = {2000,8,2}
+global constant BMP_BYTE_ORDER = 1,
+                BMP_CONVERT = 2,
+                BMP_FLIP = 3,
+                BMP_INVERT = 4,
+		BMP_BGR = 0,
+		BMP_RGB = 1,
+                BMP_NO_FLIP = 0,
+                BMP_NO_INVERT = 0,
+		BMP_HEADER = 5,
+		BMP_NO_HEADER = 0,
+		BMP_PALETTE = 6,
+		BMP_NO_PALETTE = 0,
+		BMP_PADDING = 7,
+		BMP_NO_PADDING = 0
+
+
+global constant BMPfileError=1,
+                BMPformatError=2,
+                BMPbitCountError=3
+
+constant BUFFERSIZE = 51200,  v2=2,v3=3
+atom buffer, bmpMem, BMPfile
+
+sequence bf_Type				-- 2 bytes (should be "BM") 
+global atom bf_Size  				-- 4 bytes
+global integer bf_Reserved1,bf_Reserved2	-- 2 bytes each (=0) 
+global atom bf_OffBits				-- 4 bytes 
+global atom bi_Size				-- 4 bytes
+global atom bi_Width,bi_Height			-- 4 bytes each 
+global integer bi_Planes,bi_BitCount		-- 2 bytes each 
+global atom bi_Compression,bi_SizeImg		-- 4 bytes each 
+global atom bi_XPelsPerMeter,bi_YPelsPerMeter	-- 4 bytes each 
+global atom bi_ClrUsed,bi_ClrImportant		-- 4 bytes each 
+integer crap,diffr
+integer bpr
+integer bytesPP  					-- [b]ytes [p]er [r]ow 
+global integer numColors,BMPVersion
+integer bmpconvert,bmpflipit,bmpbyteorder,
+        bmpinvert,bmpheader,bmppalette,bmppadding
+ bmpconvert = 0
+ bmpflipit = BMP_FLIP
+ bmpbyteorder = BMP_BGR
+ bmpinvert = BMP_NO_INVERT
+ bmpheader = BMP_HEADER
+ bmppalette = BMP_PALETTE
+ bmppadding = BMP_PADDING
+
+integer sbmpWidth
+sequence bmp_palette
+
+global integer dither_
+ dither_ = 0
+
+
+
+function read_bmp_as_blocks(atom a)
+atom pekare
+integer linesToRead,
+        linesRemaining 
+  buffer = allocate(BUFFERSIZE)
+  if buffer<=0 then
+    return {0,0,0,0,1,0}
+  end if
+  pekare = bmpMem
+  linesToRead = floor(BUFFERSIZE/bpr)
+  if linesToRead>bi_Height then
+    linesToRead = bi_Height
+  end if
+  linesRemaining = bi_Height
+  if bmpflipit then
+    pekare += ((bi_Height-1)*(bi_Width*bytesPP))
+  end if
+  while linesRemaining do
+    if ReadFile(BMPfile,buffer,linesToRead*bpr,NULL) then
+    end if
+    poke4(asmBMPCopyData,{buffer,pekare,linesToRead,bi_Width,diffr,bytesPP,1})
+    call(a)
+    if bmpflipit then
+      pekare -= (linesToRead*(bi_Width*bytesPP))
+    else
+      pekare += (linesToRead*(bi_Width*bytesPP))
+    end if
+    linesRemaining -= linesToRead
+    if linesToRead>linesRemaining then
+      linesToRead = linesRemaining
+    end if
+  end while
+  return {bmpMem,bi_Width,bi_Height,8,0,0}
+end function
+
+
+function readBMPHeader()
+  if ReadFile(BMPfile,buffer,18,NULL)<18 then
+    --return 1
+  end if
+  if (peek(buffer)+(peek(buffer+1)*256))!=19778 then
+    return 1
+  end if
+  bf_Size = peek4u(buffer+2)
+  bf_OffBits = peek4u(buffer+10)
+  bi_Size = peek4u(buffer+14)
+  if bi_Size=40 then
+    BMPVersion = v3
+    if ReadFile(BMPfile,buffer,36,NULL)<36 then
+      --return 1
+    end if
+    bi_Width = peek4u(buffer)
+    bi_Height = peek4u(buffer+4)
+    bi_Planes = (peek(buffer+8)+(peek(buffer+9)*256))
+    bi_BitCount = (peek(buffer+10)+(peek(buffer+11)*256))
+    bi_SizeImg = peek4u(buffer+16)
+    bi_ClrUsed = peek4u(buffer+28)
+    if bi_BitCount=16 then
+      if ReadFile(BMPfile,buffer,12,NULL)<12 then
+      end if
+      if peek4u(buffer) = #7C00 then
+        bi_BitCount = 15
+      end if
+    end if
+  elsif bi_Size=12 then
+    BMPVersion = v2
+    if ReadFile(BMPfile,buffer,8,NULL)<8 then
+     --return 1
+    end if
+    bi_Width = (peek(buffer)+(peek(buffer+1)*256))
+    bi_Height = (peek(buffer+2)+(peek(buffer+3)*256))
+    bi_BitCount = (peek(buffer+6)+(peek(buffer+7)*256))
+  else
+    return 1
+  end if
+  if bi_BitCount=15 or bi_BitCount=16 then
+    if ReadFile(BMPfile,buffer,12,NULL) then end if
+  end if
+  return 0
+end function
+
+
+function readpalette()
+sequence p
+  p = repeat({0,0,0},256)	
+  buffer = allocate(1024)
+  if BMPVersion=v3 then
+    if ReadFile(BMPfile,buffer,1024,NULL)<1024 then
+      --free(buffer)
+      --return {0,0,0,0,1,0}
+    end if
+    for i = 0 to 255 do
+      p[i+1][1] = peek(buffer+(i*4)+2)
+      p[i+1][2] = peek(buffer+(i*4)+1)
+      p[i+1][3] = peek(buffer+(i*4))
+    end for
+  else
+    if ReadFile(BMPfile,buffer,768,NULL)<768 then
+      --free_low(lowmem)
+      --return {0,0,0,0,0,1,0}
+    end if
+    for i = 0 to 255 do
+      p[i+1][1] = peek(buffer+(i*3)+2)
+      p[i+1][2] = peek(buffer+(i*3)+1)
+      p[i+1][3] = peek(buffer+(i*3))
+    end for
+  end if
+  free(buffer)
+  return p
+end function
+
+  
+function read8bit()
+sequence s
+ bmpMem = allocate(bi_Width*bi_Height)
+ diffr = (bpr-bi_Width)
+ bytesPP = 1
+ bmp_palette = readpalette()
+ if bmpflipit then
+  s = read_bmp_as_blocks(asm_copy_bmp_and_flip)
+ else
+  s = read_bmp_as_blocks(asm_copy_bmp)
+ end if
+ s[6] = bmp_palette
+ CloseHandle(BMPfile) 
+ free(buffer)   
+ return s
+end function
+
+
+function read8bit_as_15bit()
+sequence s
+ bmpMem = allocate(bi_Width*bi_Height*2)
+ buffer = allocate(1024)
+ diffr = (bpr-bi_Width)
+ if BMPVersion=v3 then
+  if ReadFile(BMPfile,buffer,1024,NULL)<1024 then
+   --free_low(lowmem)
+   --return {0,0,0,0,0,1,0}
+  end if
+  mem_copy(bmpConvertPalette,buffer,1024)
+ else
+  if ReadFile(BMPfile,buffer,768,NULL)<768 then
+   --free_low(lowmem)
+   --return {0,0,0,0,0,1,0}
+  end if
+  for i=0 to 255 do
+   poke(bmpConvertPalette+(i*4),peek(buffer+(i*3)))
+   poke(bmpConvertPalette+(i*4)+1,peek(buffer+(i*3)+1))
+   poke(bmpConvertPalette+(i*4)+2,peek(buffer+(i*3)+2))
+  end for
+ end if
+ free(buffer)
+ bytesPP = 2
+ if bmpflipit then
+  s = read_bmp_as_blocks(asm_convert_8b_to_555_and_flip)
+ else
+  s = read_bmp_as_blocks(asm_convert_8b_to_555)
+ end if
+ s[4] = 15
+ CloseHandle(BMPfile)
+ free(buffer)   
+ return s
+end function
+
+
+function read8bit_as_16bit()
+sequence s
+ bmpMem = allocate(bi_Width*bi_Height*2)
+ buffer = allocate(1024)
+ diffr = (bpr-bi_Width)
+ if BMPVersion=v3 then
+  if ReadFile(BMPfile,buffer,1024,NULL)<1024 then
+   --free_low(lowmem)
+   --return {0,0,0,0,0,1,0}
+  end if
+  mem_copy(bmpConvertPalette,buffer,1024)
+ else
+  if ReadFile(BMPfile,buffer,768,NULL)<768 then
+   --free_low(lowmem)
+   --return {0,0,0,0,0,1,0}
+  end if
+  for i=0 to 255 do
+   poke(bmpConvertPalette+(i*4),peek(buffer+(i*3)))
+   poke(bmpConvertPalette+(i*4)+1,peek(buffer+(i*3)+1))
+   poke(bmpConvertPalette+(i*4)+2,peek(buffer+(i*3)+2))
+  end for
+ end if
+ free(buffer)
+ bytesPP = 2
+ if bmpflipit then
+  s = read_bmp_as_blocks(asm_convert_8b_to_565_and_flip)
+ else
+  s = read_bmp_as_blocks(asm_convert_8b_to_565)
+ end if
+ s[4] = 16
+ --s[7] = pal
+ CloseHandle(BMPfile)
+ free(buffer)   
+ return s
+end function
+
+
+
+function read15bit()
+sequence s
+  bmpMem = allocate(bi_Width*bi_Height*2)
+  diffr = (bpr-(bi_Width*2))
+  bytesPP = 2
+  if bmpflipit then
+    s = read_bmp_as_blocks(asm_copy_bmp_and_flip)
+  else
+    s = read_bmp_as_blocks(asm_copy_bmp)
+  end if
+  s[4] = 15 
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function read16bit()
+sequence s
+  bmpMem = allocate(bi_Width*bi_Height*2)
+  diffr = (bpr-(bi_Width*2))
+  bytesPP = 2
+  if bmpflipit then
+    s = read_bmp_as_blocks(asm_copy_bmp_and_flip)
+  else
+     s = read_bmp_as_blocks(asm_copy_bmp)
+  end if
+  s[4] = 16 
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function read24bit()
+sequence s
+  bmpMem = allocate(bi_Width*bi_Height*3)
+  diffr = (bpr-(bi_Width*3))
+  bytesPP = 3
+  if bmpflipit then
+    if bmpbyteorder = BMP_BGR then
+      s = read_bmp_as_blocks(asm_copy_bmp_and_flip)
+    else
+      s = read_bmp_as_blocks(asm_convert_bgr_to_rgb_and_flip)
+    end if
+  else
+    if bmpbyteorder = BMP_BGR then
+      s = read_bmp_as_blocks(asm_copy_bmp)
+    else
+      s = read_bmp_as_blocks(asm_convert_bgr_to_rgb)
+    end if
+  end if
+  s[4] = 24 
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function read24bit_as_15bit()
+sequence s
+  bmpMem = allocate(bi_Width*bi_Height*2)
+  diffr = (bpr-(bi_Width*3))
+  bytesPP = 2
+  if bmpflipit then
+    if bmpbyteorder = BMP_BGR then
+      s = read_bmp_as_blocks(asm_convert_bgr_to_555_and_flip)
+    else
+      s = read_bmp_as_blocks(asm_convert_rgb_to_555_and_flip)
+    end if
+  else
+    if bmpbyteorder = BMP_BGR then
+      s = read_bmp_as_blocks(asm_convert_bgr_to_555)
+    else
+      s = read_bmp_as_blocks(asm_convert_rgb_to_555)
+    end if
+  end if
+  s[4] = 15
+  CloseHandle(BMPfile) 
+  free(buffer)   
+  return s
+end function
+
+
+function read24bit_as_16bit()
+sequence s
+  bmpMem = allocate(bi_Width*bi_Height*2)
+  diffr = (bpr-(bi_Width*3))
+  bytesPP = 2
+  if bmpflipit then
+    if bmpbyteorder = BMP_BGR then
+      s = read_bmp_as_blocks(asm_convert_bgr_to_565_and_flip)
+    else
+      s = read_bmp_as_blocks(asm_convert_rgb_to_565_and_flip)
+    end if
+  else
+    if bmpbyteorder = BMP_BGR then
+      s = read_bmp_as_blocks(asm_convert_bgr_to_565)
+    else
+      s = read_bmp_as_blocks(asm_convert_rgb_to_565)
+    end if
+  end if
+  s[4] = 16
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+global function LoadBitmap(sequence filen)
+sequence orig,reduced
+ BMPfile = CreateFile(filen,GENERIC_READ,0,NULL,OPEN_EXISTING,
+                      FILE_ATTRIBUTE_NORMAL+FILE_FLAG_SEQUENTIAL_SCAN,NULL)
+ if BMPfile=-1 then
+  return -1
+ end if
+ buffer = allocate(36)
+ if readBMPHeader() then
+  free(buffer)
+  CloseHandle(BMPfile) 
+  return -1
+ end if
+ free(buffer)
+ if bi_BitCount=15 then
+   bpr = floor(((16*bi_Width)+31)/32)*4
+ else
+   bpr = floor(((bi_BitCount*bi_Width)+31)/32)*4
+ end if
+ if bi_BitCount=8 then
+   if (bmpconvert=0) or (bmpconvert=8) then
+     return read8bit()
+   elsif bmpconvert=15 then
+     return read8bit_as_15bit()
+   elsif bmpconvert=16 then
+     return read8bit_as_16bit()
+   end if
+ elsif bi_BitCount=15 then
+   if (bmpconvert=0) or (bmpconvert=15) then
+     return read15bit()
+   end if
+ elsif bi_BitCount=16 then
+   if (bmpconvert=0) or (bmpconvert=16) then
+     return read16bit()
+   end if
+ elsif bi_BitCount=24 then
+   if (bmpconvert=0) or (bmpconvert=24) then
+     return read24bit()
+   elsif bmpconvert=8 then
+     orig = read24bit()
+     if orig[5] then
+       return {0,0,0,0,1,0}
+     end if
+     --reduced = makeimage8(orig,{},1,2)	--!!!!!!!! doesn't work
+     free(orig[1])
+     return reduced
+   elsif bmpconvert=15 then
+     return read24bit_as_15bit()
+   elsif bmpconvert=16 then
+     return read24bit_as_16bit()
+   end if
+ else
+   CloseHandle(BMPfile) 
+   return -1
+ end if
+end function
+ 
+ 
+
+
+global procedure ConfigBMP(integer pname,integer param)
+  if pname=BMP_CONVERT then
+    bmpconvert = param
+  elsif pname=BMP_FLIP then
+    bmpflipit = param
+  elsif pname=BMP_BYTE_ORDER then
+    bmpbyteorder = param
+  elsif pname=BMP_HEADER then
+    bmpheader = param
+  elsif pname=BMP_PALETTE then
+    bmppalette = param
+  elsif pname=BMP_PADDING then
+    bmppadding = param
+  elsif pname=BMP_INVERT then
+    bmpinvert = param
+    poke(asmBMPCopyData+28,param)
+  end if
+end procedure
+
+
+
+
+function write_bmp_as_blocks(atom a)
+atom pekare
+integer linesToWrite,
+        linesRemaining 
+  buffer = allocate(BUFFERSIZE)
+  if buffer<=0 then
+    return 1
+  end if
+  pekare = bmpMem
+  if (not bmppadding) then
+    diffr = 0
+  end if
+  linesToWrite = floor(BUFFERSIZE/bpr)
+  if linesToWrite>bi_Height then
+    linesToWrite = bi_Height
+  end if
+  linesRemaining = bi_Height
+  if bmpflipit then
+    pekare += ((bi_Height-1)*(bi_Width*bytesPP))
+  end if
+  while linesRemaining do
+    poke4(asmBMPCopyData,{pekare,buffer,linesToWrite,bi_Width,diffr,bytesPP,0})
+    call(a)
+    if WriteFile(BMPfile,buffer,linesToWrite*bpr,NULL) then
+    end if
+    if bmpflipit then
+      pekare -= (linesToWrite*(bi_Width*bytesPP))
+    else
+      pekare += (linesToWrite*(bi_Width*bytesPP))
+    end if
+    linesRemaining -= linesToWrite
+    if linesToWrite>linesRemaining then
+      linesToWrite = linesRemaining
+    end if
+  end while
+  return 0
+end function
+
+
+function writeBMPHeader()
+  buffer = allocate(54)
+  poke(buffer,bf_Type)
+  poke4(buffer+2,{bf_Size,0,bf_OffBits,bi_Size,bi_Width,bi_Height})
+  poke(buffer+26,and_bits(bi_Planes,255))
+  poke(buffer+27,and_bits(floor(bi_Planes/256),255))
+  if bi_BitCount = 15 then
+    poke(buffer+28,{16,0})
+  else
+    poke(buffer+28,{bi_BitCount,0})
+  end if
+  poke4(buffer+30,{bi_Compression,bi_SizeImg,bi_XPelsPerMeter,
+       bi_YPelsPerMeter,bi_ClrUsed,bi_ClrImportant})
+  if WriteFile(BMPfile,buffer,54,NULL)<54 then
+   --free(buffer)
+   --return 1
+  end if
+  if bi_BitCount=15 then
+    poke4(buffer,{#7C00,#03E0,#001F})
+    if WriteFile(BMPfile,buffer,12,NULL)<12 then end if
+  elsif bi_BitCount=16 then
+    poke4(buffer,{#F800,#07E0,#001F})
+    if WriteFile(BMPfile,buffer,12,NULL)<12 then end if
+  end if
+  free(buffer)
+  return 0
+end function
+
+
+procedure writepalette()
+  if bmppalette then
+    buffer = allocate(1024)
+    for i = 0 to 255 do
+      poke(buffer+(i*4),bmp_palette[i+1][3])
+      poke(buffer+(i*4)+1,bmp_palette[i+1][2])
+      poke(buffer+(i*4)+2,bmp_palette[i+1][1])
+    end for
+    if WriteFile(BMPfile,buffer,1024,NULL)<1024 then
+     --free(buffer)
+     --return 1
+    end if
+    free(buffer)
+  end if
+end procedure
+
+
+function write8bit()
+integer s
+  diffr = bpr-bi_Width
+  writepalette()
+  bytesPP = 1
+  if bmpflipit then
+    s = write_bmp_as_blocks(asm_copy_bmp_and_flip)
+  else
+    s = write_bmp_as_blocks(asm_copy_bmp)
+  end if
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function write8bit_as_15bit()
+integer s,i1
+  diffr = bpr-(bi_Width*2)
+  bytesPP = 1
+  if bmpinvert then
+    for i=1 to 256 do
+      bmp_palette[i][1] = 255-bmp_palette[i][1]
+      bmp_palette[i][2] = 255-bmp_palette[i][2]
+      bmp_palette[i][3] = 255-bmp_palette[i][3]
+    end for
+  end if
+  if bmpbyteorder=BMP_RGB then
+    for i=1 to 256 do
+      i1 = bmp_palette[i][1] 
+      bmp_palette[i][1] = bmp_palette[i][3]
+      bmp_palette[i][3] = i1
+    end for
+  end if
+  for i = 0 to 255 do
+    poke(bmpConvertPalette+(i*4),bmp_palette[i+1][3])
+    poke(bmpConvertPalette+(i*4)+1,bmp_palette[i+1][2])
+    poke(bmpConvertPalette+(i*4)+2,bmp_palette[i+1][1])
+  end for
+  if bmpflipit then
+    s = write_bmp_as_blocks(asm_convert_8b_to_555_and_flip)
+  else
+    s = write_bmp_as_blocks(asm_convert_8b_to_555)
+  end if
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function write8bit_as_16bit()
+integer s,i1
+  diffr = bpr-(bi_Width*2)
+  bytesPP = 1
+  if bmpinvert then
+    for i=1 to 256 do
+      bmp_palette[i][1] = 255-bmp_palette[i][1]
+      bmp_palette[i][2] = 255-bmp_palette[i][2]
+      bmp_palette[i][3] = 255-bmp_palette[i][3]
+    end for
+  end if
+  if bmpbyteorder=BMP_RGB then
+    for i=1 to 256 do
+      i1 = bmp_palette[i][1] 
+      bmp_palette[i][1] = bmp_palette[i][3]
+      bmp_palette[i][3] = i1
+    end for
+  end if
+  for i = 0 to 255 do
+    poke(bmpConvertPalette+(i*4),bmp_palette[i+1][3])
+    poke(bmpConvertPalette+(i*4)+1,bmp_palette[i+1][2])
+    poke(bmpConvertPalette+(i*4)+2,bmp_palette[i+1][1])
+  end for
+  if bmpflipit then
+    s = write_bmp_as_blocks(asm_convert_8b_to_565_and_flip)
+  else
+    s = write_bmp_as_blocks(asm_convert_8b_to_565)
+  end if
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function write8bit_as_24bit()
+integer s,i1
+  diffr = bpr-(bi_Width*3)
+  bytesPP = 1
+  if bmpinvert then
+    for i=1 to 256 do
+      bmp_palette[i][1] = 255-bmp_palette[i][1]
+      bmp_palette[i][2] = 255-bmp_palette[i][2]
+      bmp_palette[i][3] = 255-bmp_palette[i][3]
+    end for
+  end if
+  if bmpbyteorder=BMP_RGB then
+    for i=1 to 256 do
+      i1 = bmp_palette[i][1] 
+      bmp_palette[i][1] = bmp_palette[i][3]
+      bmp_palette[i][3] = i1
+    end for
+  end if
+  for i = 0 to 255 do
+    poke(bmpConvertPalette+(i*4),bmp_palette[i+1][3])
+    poke(bmpConvertPalette+(i*4)+1,bmp_palette[i+1][2])
+    poke(bmpConvertPalette+(i*4)+2,bmp_palette[i+1][1])
+  end for
+  if bmpflipit then
+    s = write_bmp_as_blocks(asm_convert_8b_to_bgr_and_flip)
+  else
+    s = write_bmp_as_blocks(asm_convert_8b_to_bgr)
+  end if
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function write1516bit()
+integer s
+  diffr = bpr-(bi_Width*2)
+  bytesPP = 2
+  if bmpflipit then
+    s = write_bmp_as_blocks(asm_copy_bmp_and_flip)
+  else
+    s = write_bmp_as_blocks(asm_copy_bmp)
+  end if
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function write15bit_as_24bit()
+integer s
+  diffr = bpr-(bi_Width*3)
+  bytesPP = 2
+  if bmpbyteorder=BMP_BGR then
+    if bmpflipit then
+      s = write_bmp_as_blocks(asm_convert_555_to_bgr_and_flip)
+    else
+      s = write_bmp_as_blocks(asm_convert_555_to_bgr_and_flip)
+    end if
+  else
+    if bmpflipit then
+      s = write_bmp_as_blocks(asm_convert_555_to_rgb_and_flip)
+    else
+      s = write_bmp_as_blocks(asm_convert_555_to_rgb_and_flip)
+    end if
+  end if
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function write16bit_as_24bit()
+integer s
+  diffr = bpr-(bi_Width*3)
+  bytesPP = 2
+  if bmpbyteorder=BMP_BGR then
+    if bmpflipit then
+      s = write_bmp_as_blocks(asm_convert_565_to_bgr_and_flip)
+    else
+      s = write_bmp_as_blocks(asm_convert_565_to_bgr_and_flip)
+    end if
+  else
+    if bmpflipit then
+      s = write_bmp_as_blocks(asm_convert_565_to_rgb_and_flip)
+    else
+      s = write_bmp_as_blocks(asm_convert_565_to_rgb_and_flip)
+    end if
+  end if
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function write24bit()
+integer s
+  diffr = bpr-(bi_Width*3)
+  bytesPP = 3
+  if bmpbyteorder=BMP_BGR then
+    if bmpflipit then
+      s = write_bmp_as_blocks(asm_copy_bmp_and_flip)
+    else
+      s = write_bmp_as_blocks(asm_copy_bmp)
+    end if
+  else
+    if bmpflipit then
+      s = write_bmp_as_blocks(asm_convert_bgr_to_rgb_and_flip)
+    else
+      s = write_bmp_as_blocks(asm_convert_bgr_to_rgb)
+    end if
+  end if
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function write24bit_as_15bit()
+integer s
+  diffr = bpr-(bi_Width*2)
+  bytesPP = 3
+  if bmpbyteorder=BMP_BGR then
+    if bmpflipit then
+      s = write_bmp_as_blocks(asm_convert_bgr_to_555_and_flip)
+    else
+      s = write_bmp_as_blocks(asm_convert_bgr_to_555)
+    end if
+  else
+    if bmpflipit then
+      s = write_bmp_as_blocks(asm_convert_rgb_to_555_and_flip)
+    else
+      s = write_bmp_as_blocks(asm_convert_rgb_to_555)
+    end if
+  end if
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+function write24bit_as_16bit()
+integer s
+  diffr = bpr-(bi_Width*2)
+  bytesPP = 3
+  if bmpbyteorder=BMP_BGR then
+    if bmpflipit then
+      s = write_bmp_as_blocks(asm_convert_bgr_to_565_and_flip)
+    else
+      s = write_bmp_as_blocks(asm_convert_bgr_to_565)
+    end if
+  else
+    if bmpflipit then
+      s = write_bmp_as_blocks(asm_convert_rgb_to_565_and_flip)
+    else
+      s = write_bmp_as_blocks(asm_convert_rgb_to_565)
+    end if
+  end if
+  CloseHandle(BMPfile)
+  free(buffer)   
+  return s
+end function
+
+
+
+global function SaveBitmap(sequence filen,sequence src_bmp,sequence trgt_bmp)
+sequence reduced
+integer i1
+ bmpMem = src_bmp[1]
+ sbmpWidth = src_bmp[2]
+ bf_Type = "BM"
+ bi_Width = trgt_bmp[2]
+ if bi_Width>sbmpWidth then
+  bi_Width = sbmpWidth
+ end if
+ bi_Height = trgt_bmp[3]
+ if bi_Height>src_bmp[3] then
+  bi_Height = src_bmp[3]
+ end if
+ bi_BitCount = trgt_bmp[4]
+
+ if bmppadding then
+    if bi_BitCount=15 then
+      bpr = floor(((16*bi_Width)+31)/32)*4
+    else
+      bpr = floor(((bi_BitCount*bi_Width)+31)/32)*4
+    end if
+ else
+    bpr = floor((bi_BitCount+1)/8)*bi_Width
+ end if
+
+ bi_SizeImg = bi_Width*bi_Height*floor((bi_BitCount+1)/8)
+ bf_Size = bi_SizeImg+54
+ bf_Reserved1 = 0
+ bf_Reserved2 = 0
+ bf_OffBits = 54
+ bi_Size = 40
+ bi_Planes = 1
+ bi_Compression = 0
+ bi_XPelsPerMeter = 72
+ bi_YPelsPerMeter = 72
+ bi_ClrUsed = 0
+ bi_ClrImportant = 0
+
+ if src_bmp[4]=8 then
+   bmp_palette = src_bmp[6]
+ end if
+ if bi_BitCount=8 then
+   bf_Size += 1024
+   bf_OffBits += 1024
+   bmp_palette = trgt_bmp[6]
+ else
+   if bi_BitCount=15 or bi_BitCount=16 then
+     bi_Compression = 3
+     bf_Size += 12
+     bf_OffBits += 12
+   end if
+ end if
+ BMPfile = CreateFile(filen,GENERIC_WRITE,0,NULL,CREATE_ALWAYS,
+                      FILE_ATTRIBUTE_NORMAL+FILE_FLAG_SEQUENTIAL_SCAN,NULL)
+  if BMPfile=-1 then
+    return 2
+  end if
+
+  if bmpheader then
+    if writeBMPHeader() then
+      CloseHandle(BMPfile) 
+      return 3
+    end if
+  end if
+
+ if bi_BitCount=8 then
+   if src_bmp[4]=8 then
+     return write8bit()
+   elsif (src_bmp[4]=15) or (src_bmp[4]=16) or (src_bmp[4]=24) then
+     --reduced = makeimage8(src_bmp,bmp_palette,dither_,2)
+     bmpMem = reduced[1]
+     bmp_palette = reduced[6]
+     i1 = write8bit()
+     free(reduced[1])
+     return i1
+   end if
+ elsif bi_BitCount=15 then
+   if src_bmp[4]=8 then
+     return write8bit_as_15bit()
+   elsif src_bmp[4]=15 then
+     return write1516bit()
+   elsif src_bmp[4]=24 then
+     return write24bit_as_15bit()
+   end if
+ elsif bi_BitCount=16 then
+   if src_bmp[4]=8 then
+     return write8bit_as_16bit()
+   elsif src_bmp[4]=16 then
+     return write1516bit()
+   elsif src_bmp[4]=24 then
+     return write24bit_as_16bit()
+   end if
+ elsif bi_BitCount=24 then
+   if src_bmp[4]=8 then
+     return write8bit_as_24bit()
+   elsif src_bmp[4]=15 then
+     return write15bit_as_24bit()
+   elsif src_bmp[4]=16 then
+     return write16bit_as_24bit()
+   elsif src_bmp[4]=24 then
+     return write24bit()
+   end if
+ end if
+
+ return 0
+end function
+
+
+
+
+global procedure UnloadBMP(sequence s1)
+  if s1[1] then
+    free(s1[1])
+  end if
+end procedure
+
+
+--// Load binary file
+load_beeampee()
+
