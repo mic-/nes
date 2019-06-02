@@ -1,21 +1,19 @@
 include memory.e
 
-
 -- Addressing modes
 constant
-	IMPLIED = 0,
-	ZEROPAGE = 1,
-	ZEROPAGE_X = 2,
-	ZEROPAGE_Y = 3,
-	ABSOLUTE = 4,
-	ABSOLUTE_X = 5,
-	ABSOLUTE_Y = 6,
-	INDIRECT = 7,
-	INDIRECT_X = 8,
-	INDIRECT_Y = 9,
-	IMMEDIATE = 10,
-	RELATIVE = 11
-	
+    IMPLIED    = 0,
+    ZEROPAGE   = 1,
+    ZEROPAGE_X = 2,
+    ZEROPAGE_Y = 3,
+    ABSOLUTE   = 4,
+    ABSOLUTE_X = 5,
+    ABSOLUTE_Y = 6,
+    INDIRECT   = 7,
+    INDIRECT_X = 8,
+    INDIRECT_Y = 9,
+    IMMEDIATE  = 10,
+    RELATIVE   = 11
 
 constant MNEMONICS = {
 {"BRK",IMPLIED},
@@ -307,83 +305,82 @@ constant ADDRESSING_NAMES = {
 
 
 function disassemble_once(atom pc)
-	atom save_pc
-	integer op,i
-	sequence s,t,ret
-	
-	save_pc = reg_PC
-	reg_PC = pc
-	
-	op = fetch_byte()
-	s = MNEMONICS[op+1]
-	
-	if not length(s) then
-		ret = {sprintf("Illegal opcode ($%02x)",op),pc,reg_PC,op}
-	else
-		if s[2]=IMPLIED then
-			t = s[1]
-		elsif s[2]=ZEROPAGE then
-			t = s[1] & sprintf(" $%02x",fetch_byte())
-		elsif s[2]=ZEROPAGE_X then
-			t = s[1] & sprintf(" $%02x,X",fetch_byte())
-		elsif s[2]=ZEROPAGE_Y then
-			t = s[1] & sprintf(" $%02x,Y",fetch_byte())
-		elsif s[2]=ABSOLUTE then
-			t = s[1] & sprintf(" $%04x",fetch_word())
-		elsif s[2]=ABSOLUTE_X then
-			t = s[1] & sprintf(" $%04x,X",fetch_word())
-		elsif s[2]=ABSOLUTE_Y then
-			t = s[1] & sprintf(" $%04x,Y",fetch_word())
-		elsif s[2]=INDIRECT then
-			t = s[1] & sprintf(" ($%04x)",fetch_word())
-		elsif s[2]=INDIRECT_X then
-			t = s[1] & sprintf(" ($%02x,X)",fetch_byte())
-		elsif s[2]=INDIRECT_Y then
-			t = s[1] & sprintf(" ($%02x),Y",fetch_byte())
-		elsif s[2]=IMMEDIATE then
-			t = s[1] & sprintf(" #$%02x",fetch_byte())
-		elsif s[2]=RELATIVE then
-			i = fetch_byte()
-			if i>127 then
-				i -= 256
-			end if
-			t = s[1] & sprintf(" %04x",i+reg_PC)
-		end if
-		ret = {t,pc,reg_PC,op}
-	end if
-	
-	reg_PC = save_pc
-	
-	return ret
+    atom save_pc
+    integer op, i
+    sequence s, t, ret
+
+    save_pc = reg_PC
+    reg_PC = pc
+
+    op = fetch_byte()
+    s = MNEMONICS[op+1]
+
+    if not length(s) then
+        ret = {sprintf("Illegal opcode ($%02x)",op), pc, reg_PC, op}
+    else
+        if s[2] = IMPLIED then
+            t = s[1]
+        elsif s[2] = ZEROPAGE then
+            t = s[1] & sprintf(" $%02x", fetch_byte())
+        elsif s[2] = ZEROPAGE_X then
+            t = s[1] & sprintf(" $%02x,X", fetch_byte())
+        elsif s[2] = ZEROPAGE_Y then
+            t = s[1] & sprintf(" $%02x,Y", fetch_byte())
+        elsif s[2] = ABSOLUTE then
+            t = s[1] & sprintf(" $%04x", fetch_word())
+        elsif s[2] = ABSOLUTE_X then
+            t = s[1] & sprintf(" $%04x,X", fetch_word())
+        elsif s[2] = ABSOLUTE_Y then
+            t = s[1] & sprintf(" $%04x,Y", fetch_word())
+        elsif s[2] = INDIRECT then
+            t = s[1] & sprintf(" ($%04x)", fetch_word())
+        elsif s[2] = INDIRECT_X then
+            t = s[1] & sprintf(" ($%02x,X)", fetch_byte())
+        elsif s[2] = INDIRECT_Y then
+            t = s[1] & sprintf(" ($%02x),Y", fetch_byte())
+        elsif s[2] = IMMEDIATE then
+            t = s[1] & sprintf(" #$%02x", fetch_byte())
+        elsif s[2] = RELATIVE then
+            i = fetch_byte()
+            if i > 127 then
+                i -= 256
+            end if
+            t = s[1] & sprintf(" %04x", i+reg_PC)
+        end if
+        ret = {t, pc, reg_PC, op}
+    end if
+
+    reg_PC = save_pc
+
+    return ret
 end function
 
-	
 
-global function disassemble(atom pc,integer numOps)
-	sequence code,s
-	
-	code = {}
-	
-	for i=1 to numOps do
-		s = disassemble_once(pc)
-		code = append(code,{pc,s[1],s[4]})
-		pc = s[3]
-	end for
+global function disassemble(atom pc, integer numOps)
+    sequence code,s
+
+    code = {}
+
+    for i = 1 to numOps do
+        s = disassemble_once(pc)
+        code = append(code, {pc,s[1],s[4]})
+        pc = s[3]
+    end for
         
-        return code
+    return code
 end function
 
 
 
 global function instruction_name(integer op)
-	sequence s
-	
-	s = MNEMONICS[op+1]
-	if length(s) then
-		s = s[1]&" "&ADDRESSING_NAMES[s[2]+1]
-	else
-		s = "Illegal opcode"
-	end if
+    sequence s
 
-	return s
+    s = MNEMONICS[op+1]
+    if length(s) then
+        s = s[1] & " " & ADDRESSING_NAMES[s[2]+1]
+    else
+        s = "Illegal opcode"
+    end if
+
+    return s
 end function

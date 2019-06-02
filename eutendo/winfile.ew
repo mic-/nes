@@ -5,31 +5,30 @@ constant lpFName = allocate(256)
 constant bytesHi = allocate(4)
 
 global constant GENERIC_READ  = #80000000,
-		GENERIC_WRITE = #40000000,
-		FILE_ATTRIBUTE_NORMAL = #80,
-		FILE_BEGIN 	           = 0,
-		FILE_CURRENT               = 1,
-		FILE_END                   = 2,
-		FILE_FLAG_WRITE_THROUGH    = #80000000,
-		FILE_FLAG_OVERLAPPED       = #40000000,
-		FILE_FLAG_NO_BUFFERING     = #20000000,
-		FILE_FLAG_RANDOM_ACCESS    = #10000000,
-		FILE_FLAG_SEQUENTIAL_SCAN  = #8000000,
-		FILE_FLAG_DELETE_ON_CLOSE  = #4000000,
-		FILE_FLAG_BACKUP_SEMANTICS = #2000000,
-		FILE_FLAG_POSIX_SEMANTICS  = #1000000,
-		CREATE_NEW        = 1,
-		CREATE_ALWAYS     = 2,
-		OPEN_EXISTING     = 3,
-		OPEN_ALWAYS       = 4,
-		TRUNCATE_EXISTING = 5,
-		INVALID_HANDLE_VALUE = -1
+        GENERIC_WRITE = #40000000,
+        FILE_ATTRIBUTE_NORMAL = #80,
+        FILE_BEGIN           = 0,
+        FILE_CURRENT               = 1,
+        FILE_END                   = 2,
+        FILE_FLAG_WRITE_THROUGH    = #80000000,
+        FILE_FLAG_OVERLAPPED       = #40000000,
+        FILE_FLAG_NO_BUFFERING     = #20000000,
+        FILE_FLAG_RANDOM_ACCESS    = #10000000,
+        FILE_FLAG_SEQUENTIAL_SCAN  = #8000000,
+        FILE_FLAG_DELETE_ON_CLOSE  = #4000000,
+        FILE_FLAG_BACKUP_SEMANTICS = #2000000,
+        FILE_FLAG_POSIX_SEMANTICS  = #1000000,
+        CREATE_NEW        = 1,
+        CREATE_ALWAYS     = 2,
+        OPEN_EXISTING     = 3,
+        OPEN_ALWAYS       = 4,
+        TRUNCATE_EXISTING = 5,
+        INVALID_HANDLE_VALUE = -1
 
 constant kernel = open_dll("kernel32.dll")
 
 integer CreateFileC,ReadFileC,WriteFileC,CloseHandleC,
         DeleteFileC,SetFilePointerC
-
 
 CreateFileC = define_c_func(kernel,"CreateFileA",repeat(C_UINT,7),C_INT)
 ReadFileC = define_c_func(kernel,"ReadFile",{C_INT,C_POINTER,C_UINT,C_POINTER,C_POINTER},C_INT)
@@ -38,63 +37,60 @@ SetFilePointerC = define_c_func(kernel,"SetFilePointer",{C_INT,C_UINT,C_POINTER,
 CloseHandleC = define_c_func(kernel,"CloseHandle",{C_INT},C_INT)
 
 
-
-global function CreateFile(sequence s,atom a,atom b,atom c,atom d,atom e,atom f)
-  poke(lpFName,s&0)
-  return c_func(CreateFileC,{lpFName,a,b,c,d,e,f})
+global function CreateFile(sequence s, atom desiredaccess, atom sharemode, atom c, atom d, atom flagsandattrs, atom htemplatefile)
+    poke(lpFName, s&0)
+    return c_func(CreateFileC, {lpFName,desiredaccess,sharemode,c,d,flagsandattrs,htemplatefile})
 end function
 
-global function ReadFile(atom a,atom b,atom c,atom d)
-  return c_func(ReadFileC,{a,b,c,bytesHi,d})
+global function ReadFile(atom hfile, atom lpbuffer, atom bytestoread, atom lpoverlapped)
+    return c_func(ReadFileC, {hfile,lpbuffer,bytestoread,bytesHi,lpoverlapped})
 end function
 
 global function WriteFile(atom a,atom b,atom c,atom d)
-  return c_func(WriteFileC,{a,b,c,bytesHi,d})
+    return c_func(WriteFileC,{a,b,c,bytesHi,d})
 end function
 
 global procedure CloseHandle(atom a)
-  if c_func(CloseHandleC,{a}) then end if
+    if c_func(CloseHandleC,{a}) then end if
 end procedure
 
 
 
 
-global function FOpen(sequence fname,sequence accmode)
-  poke(lpFName,fname&0)
-  if compare(accmode,"rb")=0 then
-    return c_func(CreateFileC,{GENERIC_READ,0,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL+
-                               FILE_FLAG_SEQUENTIAL_SCAN,NULL})
-  elsif compare(accmode,"wb")=0 then
-    return c_func(CreateFileC,{GENERIC_WRITE,0,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL+
-                               FILE_FLAG_SEQUENTIAL_SCAN,NULL})
-  end if
+global function FOpen(sequence fname, sequence accmode)
+    poke(lpFName, fname&0)
+    if compare(accmode, "rb") = 0 then
+        return c_func(CreateFileC, {lpFName,GENERIC_READ,0,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL+FILE_FLAG_SEQUENTIAL_SCAN,NULL})
+    elsif compare(accmode, "wb") = 0 then
+        return c_func(CreateFileC, {lpFName,GENERIC_WRITE,0,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL+FILE_FLAG_SEQUENTIAL_SCAN,NULL})
+    end if
 end function
 
 
 global procedure FClose(atom fh)
-  if c_func(CloseHandleC,{fh}) then end if
+    if c_func(CloseHandleC, {fh}) then end if
 end procedure
 
 
-global function FRead(atom fh,atom buf,integer len)
-  return c_func(ReadFileC,{fh,buf,len,bytesHi,NULL})
+global function FRead(atom fh, atom buf, integer len)
+    return c_func(ReadFileC, {fh,buf,len,bytesHi,NULL})
 end function
 
 
-global function FReads(atom fh,atom buf,integer len)
-  if c_func(ReadFileC,{fh,buf,len,bytesHi,NULL}) then end if
-  return peek({buf,len})
+global function FReads(atom fh, atom buf, integer len)
+    if c_func(ReadFileC, {fh,buf,len,bytesHi,NULL}) then end if
+    return peek({buf, len})
 end function
 
 
 global function FWrite(atom fh,atom buf,integer len)
-  return c_func(WriteFileC,{fh,buf,len,bytesHi,NULL})
+    return c_func(WriteFileC, {fh,buf,len,bytesHi,NULL})
 end function
 
 
 global function FSeek(atom fh,atom iDTM,atom dwMoveMethod)
-  poke4(bytesHi,0)
-  return c_func(SetFilePointerC,{fh,iDTM,bytesHi,dwMoveMethod})
+    poke4(bytesHi, 0)
+    return c_func(SetFilePointerC, {fh,iDTM,bytesHi,dwMoveMethod})
 end function
 
 
