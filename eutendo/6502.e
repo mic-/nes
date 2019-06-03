@@ -179,11 +179,7 @@ end procedure
 procedure LSR_()
     operand = read_byte(address)
 
-    if and_bits(operand, 1) then
-        Carry = 1
-    else
-        Carry = 0
-    end if
+    Carry = and_bits(operand, 1)
 
     operand = floor(operand / 2)
     write_byte(address, operand)
@@ -245,11 +241,7 @@ procedure ROR_()
         operand += #100
     end if
 
-    if and_bits(operand, 1) then
-        Carry = 1
-    else
-        Carry = 0
-    end if
+    Carry = and_bits(operand, 1)
 
     operand = floor(operand / 2)
     write_byte(address,operand)
@@ -670,12 +662,8 @@ global procedure execute()
         -- LSR
         case #4A then
             Negative = 0
-            if and_bits(reg_A,1) then
-                Carry = 1
-            else
-                Carry = 0
-            end if
-            reg_A = floor(reg_A/2)
+            Carry = and_bits(reg_A, 1)
+            reg_A = floor(reg_A / 2)
             if reg_A then
                 Zero = 0
             else
@@ -869,11 +857,7 @@ global procedure execute()
             if Carry then
                 reg_A += #100
             end if
-            if and_bits(reg_A, 1) then
-                Carry = 1
-            else
-                Carry = 0
-            end if
+            Carry = and_bits(reg_A, 1)
             reg_A = floor(reg_A / 2)
             if reg_A then
                 Zero = 0
