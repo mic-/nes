@@ -25,47 +25,24 @@ procedure ADC_()
 
     val = operand + reg_A + Carry
 
-    if (val > #FF) then
-        Carry = 1
-    else
-        Carry = 0
-    end if
+    Carry = (val > #FF)
 
-    if not and_bits(val, #FF) then
-        Zero = 1
-        Negative = 0
-    else
-        Zero = 0
-        if and_bits(val, #80) then
-            Negative = 1
-        else
-            Negative = 0
-        end if
-    end if
     if (not and_bits(xor_bits(reg_A,operand),#80)) and and_bits(xor_bits(reg_A,val),#80) then
         Overflow = 1
     else
         Overflow = 0
     end if
     reg_A = and_bits(val,#FF)
+    Negative = (reg_A >= #80)
+    Zero = (reg_A = 0)
 end procedure
 
 
 
 procedure AND_()
-    reg_A = and_bits(reg_A,operand)
-
-    if reg_A then
-        if reg_A < #80 then
-            Negative = 0
-        else
-            Negative = 1
-        end if
-        Zero = 0
-    else
-        Zero = 1
-        Negative = 0
-    end if
+    reg_A = and_bits(reg_A, operand)
+    Negative = (reg_A >= #80)
+    Zero = (reg_A = 0)
 end procedure
 
 
@@ -74,47 +51,19 @@ procedure ASL_()
     operand = read_byte(address)
     operand += operand
 
-    if operand > #FF then
-        Carry = 1
-    else
-        Carry = 0
-    end if
-
+    Carry = (operand > #FF)
     operand = and_bits(operand, #FF)
     write_byte(address, operand)
 
-    if operand then
-        if operand < #80 then
-            Negative = 0
-        else
-            Negative = 1
-        end if
-        Zero = 0
-    else
-        Zero = 1
-        Negative = 0
-    end if
+    Negative = (operand >= #80)
+    Zero = (operand = 0)
 end procedure
 
 
 procedure CMP_()
-    if operand < 0 then
-        Negative = 1
-        Zero = 0
-        Carry = 0
-    elsif operand then
-        Carry = 1
-        Zero = 0
-        if operand < #80 then
-            Negative = 0
-        else
-            Negative = 1
-        end if
-    else
-        Carry = 1
-        Zero = 1
-        Negative = 0
-    end if
+    Carry = (operand >= 0)
+    Negative = (operand < 0 or operand >= #80)
+    Zero = (operand = 0)
 end procedure
 
 
@@ -124,34 +73,15 @@ procedure DEC_()
 
     write_byte(address,operand)
 
-    if operand then
-        if operand < #80 then
-            Negative = 0
-        else
-            Negative = 1
-        end if
-        Zero = 0
-    else
-        Zero = 1
-        Negative = 0
-    end if
+    Negative = (operand >= #80)
+    Zero = (operand = 0)
 end procedure
 
 
 procedure EOR_()
     reg_A = xor_bits(reg_A, operand)
-
-    if reg_A then
-        if reg_A<#80 then
-            Negative = 0
-        else
-            Negative = 1
-        end if
-        Zero = 0
-    else
-        Zero = 1
-        Negative = 0
-    end if
+    Negative = (reg_A >= #80)
+    Zero = (reg_A = 0)
 end procedure
 
 
@@ -162,17 +92,8 @@ procedure INC_()
 
     write_byte(address,operand)
 
-    if operand then
-        if operand<#80 then
-            Negative = 0
-        else
-            Negative = 1
-        end if
-        Zero = 0
-    else
-        Zero = 1
-        Negative = 0
-    end if
+    Negative = (operand >= #80)
+    Zero = (operand = 0)
 end procedure
 
 
@@ -184,29 +105,15 @@ procedure LSR_()
     operand = floor(operand / 2)
     write_byte(address, operand)
 
-    if operand then
-        Zero = 0
-    else
-        Zero = 1
-    end if
     Negative = 0
+    Zero = (operand = 0)
 end procedure
 
 
 procedure ORA_()
     reg_A = or_bits(reg_A, operand)
-
-    if reg_A then
-        if reg_A < #80 then
-            Negative = 0
-        else
-            Negative = 1
-        end if
-        Zero = 0
-    else
-        Zero = 1
-        Negative = 0
-    end if
+    Negative = (reg_A >= #80)
+    Zero = (reg_A = 0)
 end procedure
 
 
@@ -220,18 +127,11 @@ procedure ROL_()
         Carry = 1
         operand = and_bits(operand, #FF)
     end if
+
     write_byte(address,operand)
-    if operand then
-        Zero = 0
-        if operand >= #80 then
-            Negative = 1
-        else
-            Negative = 0
-        end if
-    else
-        Zero = 1
-        Negative = 0
-    end if
+
+    Negative = (operand >= #80)
+    Zero = (operand = 0)
 end procedure
 
 
@@ -246,17 +146,8 @@ procedure ROR_()
     operand = floor(operand / 2)
     write_byte(address,operand)
 
-    if operand then
-        if operand < #80 then
-            Negative = 0
-        else
-            Negative = 1
-        end if
-        Zero = 0
-    else
-        Zero = 1
-        Negative = 0
-    end if
+    Negative = (operand >= #80)
+    Zero = (operand = 0)
 end procedure
 
 
@@ -339,17 +230,8 @@ global procedure execute()
                 reg_A = read_byte(peek(reg_PC+PRGROM2-#C000))
             end if
             reg_PC += 1
-            if reg_A then
-                if reg_A<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 3.0
 
         -- BEQ <aa
@@ -407,33 +289,15 @@ global procedure execute()
                 reg_A = peek(reg_PC+PRGROM2-#C000)
             end if
             reg_PC += 1
-            if reg_A then
-                if reg_A<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 2.0
 
         -- DEX
         case #CA then
             reg_X = and_bits(reg_X+#FF, #FF)
-            if reg_X then
-                if reg_X < #80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_X >= #80)
+            Zero = (reg_X = 0)
             cycle += 2.0
 
         -- LDA aaaa
@@ -445,17 +309,8 @@ global procedure execute()
             end if
             reg_A = read_byte(peek(address) + peek(address+1)*#100)
             reg_PC += 2
-            if reg_A then
-                if reg_A < #80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 4.0
 
         -- RTS
@@ -472,17 +327,8 @@ global procedure execute()
                 reg_A = read_byte(and_bits(peek(reg_PC+PRGROM2-#C000)+reg_X,#FF))
             end if
             reg_PC += 1
-            if reg_A then
-                if reg_A<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 4.0
 
         -- LDA aaaa,X
@@ -495,17 +341,8 @@ global procedure execute()
             address = peek(temp) + peek(temp+1)*#100
             reg_A = read_byte(and_bits(address+reg_X,#FFFF))
             reg_PC += 2
-            if reg_A then
-                if reg_A < #80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-                end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 4.0
 
         -- BCC <aa
@@ -565,17 +402,8 @@ global procedure execute()
         -- LDA (aa),Y
         case #B1 then
             reg_A = read_byte(iny8post())
-            if reg_A then
-                if reg_A < #80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 5.0
 
         -- BCS <aa
@@ -592,17 +420,8 @@ global procedure execute()
         -- PLA
         case #68 then
             reg_A = pull()
-            if reg_A then
-                Zero = 0
-                if reg_A >= #80 then
-                    Negative = 1
-                else
-                    Negative = 0
-                end if
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 4.0
 
         -- AND #aa
@@ -614,49 +433,22 @@ global procedure execute()
             end if
             reg_PC += 1
             reg_A = and_bits(reg_A, operand)
-            if reg_A then
-                if reg_A<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 2.0
 
         -- INX
         case #E8 then
             reg_X = and_bits(reg_X+1, #FF)
-            if reg_X then
-                if reg_X<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_X >= #80)
+            Zero = (reg_X = 0)
             cycle += 2.0
 
         -- INY
         case #C8 then
             reg_Y = and_bits(reg_Y+1, #FF)
-            if reg_Y then
-                if reg_Y<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_Y >= #80)
+            Zero = (reg_Y = 0)
             cycle += 2.0
 
         -- LSR
@@ -675,17 +467,8 @@ global procedure execute()
         -- TAX
         case #AA then
             reg_X = reg_A
-            if reg_A then
-                if reg_A < #80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_X >= #80)
+            Zero = (reg_X = 0)
             cycle += 2.0
 
         -- STA aaaa
@@ -703,17 +486,8 @@ global procedure execute()
         -- TAY
         case #A8 then
             reg_Y = reg_A
-            if reg_A then
-                if reg_A<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_Y >= #80)
+            Zero = (reg_Y = 0)
             cycle += 2.0
 
         -- STA aa,X
@@ -730,17 +504,8 @@ global procedure execute()
                 Carry = 1
                 reg_A = and_bits(reg_A,#FF)
             end if
-            if reg_A then
-                Zero = 0
-                if reg_A>=#80 then
-                    Negative = 1
-                else
-                    Negative = 0
-                end if
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 2.0
 
         -- SBC aa
@@ -791,33 +556,15 @@ global procedure execute()
         -- LDA aaaa,Y
         case #B9 then
             reg_A = read_byte(and_bits(fetch_word()+reg_Y,#FFFF))
-            if reg_A then
-                if reg_A<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 5.0
 
         -- DEY
         case #88 then
             reg_Y = and_bits(reg_Y+#FF, #FF)
-            if reg_Y then
-                if reg_Y<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_Y >= #80)
+            Zero = (reg_Y = 0)
             cycle += 2.0
 
         -- PHA
@@ -839,17 +586,8 @@ global procedure execute()
                 reg_Y = peek(reg_PC+PRGROM2-#C000)
             end if
             reg_PC += 1
-            if reg_Y then
-            if reg_Y < #80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_Y >= #80)
+            Zero = (reg_Y = 0)
             cycle += 2.0
 
         -- ROR
@@ -859,17 +597,8 @@ global procedure execute()
             end if
             Carry = and_bits(reg_A, 1)
             reg_A = floor(reg_A / 2)
-            if reg_A then
-                Zero = 0
-                if reg_A>=#80 then
-                    Negative = 1
-                else
-                    Negative = 0
-                end if
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 2.0
 
         -- STY aa
@@ -884,17 +613,8 @@ global procedure execute()
         -- TXA
         case #8A then
             reg_A = reg_X
-            if reg_A then
-                Zero = 0
-                if reg_A<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 2.0
 
         -- ROL
@@ -906,17 +626,8 @@ global procedure execute()
                 Carry = 1
                 reg_A = and_bits(reg_A,#FF)
             end if
-            if reg_A then
-                Zero = 0
-                if reg_A>=#80 then
-                    Negative = 1
-                else
-                    Negative = 0
-                end if
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 2.0
 
         -- ROL aa
@@ -962,17 +673,8 @@ global procedure execute()
         -- TYA
         case #98 then
             reg_A = reg_Y
-            if reg_A then
-                Zero = 0
-                if reg_A>=#80 then
-                    Negative = 1
-                else
-                    Negative = 0
-                end if
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 2.0
 
         -- STA (aa),Y
@@ -988,17 +690,8 @@ global procedure execute()
                 reg_X = peek(reg_PC+PRGROM2-#C000)
             end if
             reg_PC += 1
-            if reg_X then
-                if reg_X < #80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_X >= #80)
+            Zero = (reg_X = 0)
             cycle += 2.0
 
         -- CPX #aa
@@ -1085,17 +778,8 @@ global procedure execute()
                 reg_X = read_byte(peek(reg_PC+PRGROM2-#C000))
             end if
             reg_PC += 1
-            if reg_X then
-                if reg_X < #80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_X >= #80)
+            Zero = (reg_X = 0)
             cycle += 3.0
 
         -- STX aa
@@ -1142,17 +826,8 @@ global procedure execute()
         -- LDY aaaa
         case #AC then
             reg_Y = read_byte(fetch_word())
-            if reg_Y then
-                if reg_Y < #80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_Y >= #80)
+            Zero = (reg_Y = 0)
             cycle += 4.0
 
         -- CMP aaaa,Y
@@ -1182,18 +857,9 @@ global procedure execute()
 
         -- LDY aa,X
         case #B4 then
-            reg_Y = read_byte(and_bits(fetch_byte()+reg_X,#FF))
-            if reg_Y then
-                if reg_Y<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            reg_Y = read_byte(and_bits(fetch_byte()+reg_X, #FF))
+            Negative = (reg_Y >= #80)
+            Zero = (reg_Y = 0)
             cycle += 4.0
 
         -- ORA #aa
@@ -1245,22 +911,13 @@ global procedure execute()
                 reg_Y = read_byte(peek(reg_PC+PRGROM2-#C000))
             end if
             reg_PC += 1
-            if reg_Y then
-                if reg_Y<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_Y >= #80)
+            Zero = (reg_Y = 0)
             cycle += 3.0
 
         -- CMP aaaa,X
         case #DD then
-            operand = reg_A-read_byte(and_bits(fetch_word()+reg_X,#FFFF))
+            operand = reg_A-read_byte(and_bits(fetch_word()+reg_X, #FFFF))
             CMP_()
             cycle += 4.0
 
@@ -1348,17 +1005,8 @@ global procedure execute()
         -- LDY aaaa,X
         case #BC then
             reg_Y = read_byte(fetch_word()+reg_X)
-            if reg_Y then
-                if reg_Y<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_Y >= #80)
+            Zero = (reg_Y = 0)
             cycle += 4.0
 
         -- ROR aa,X
@@ -1394,17 +1042,8 @@ global procedure execute()
         -- LDX aaaa
         case #AE then
             reg_X = read_byte(fetch_word())
-            if reg_X then
-                if reg_X<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_X >= #80)
+            Zero = (reg_X = 0)
             cycle += 4.0
 
         -- ORA aaaa,X
@@ -1476,18 +1115,9 @@ global procedure execute()
 
         -- LDX aaaa,Y
         case #BE then
-            reg_X = read_byte(and_bits(fetch_word()+reg_Y,#FFFF))
-            if reg_X then
-                if reg_X<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            reg_X = read_byte(and_bits(fetch_word()+reg_Y, #FFFF))
+            Negative = (reg_X >= #80)
+            Zero = (reg_X = 0)
             cycle += 4.0
 
         -- SEI
@@ -1521,17 +1151,8 @@ global procedure execute()
                 reg_X = read_byte(and_bits(peek(reg_PC+PRGROM2-#C000)+reg_Y,#FF))
             end if
             reg_PC += 1
-            if reg_X then
-                if reg_X<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_X >= #80)
+            Zero = (reg_X = 0)
             cycle += 3.0
 
         -- ADC aaaa,X
@@ -1568,17 +1189,8 @@ global procedure execute()
         -- LDA (aa,X)
         case #A1 then
             reg_A = read_byte(inx8pre())
-            if reg_A then
-                if reg_A<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_A >= #80)
+            Zero = (reg_A = 0)
             cycle += 6.0
 
         -- ROR aaaa,X
@@ -1658,17 +1270,8 @@ global procedure execute()
         -- TSX
         case #BA then
             reg_X = reg_S
-            if reg_X then
-                if reg_X<#80 then
-                    Negative = 0
-                else
-                    Negative = 1
-                end if
-                Zero = 0
-            else
-                Zero = 1
-                Negative = 0
-            end if
+            Negative = (reg_X >= #80)
+            Zero = (reg_X = 0)
             cycle += 2.0
 
         -- CLI
