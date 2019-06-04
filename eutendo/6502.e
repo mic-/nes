@@ -225,9 +225,9 @@ global procedure execute()
         -- LDA aa
         case #A5 then
             if reg_PC < #C000 then
-                reg_A = read_byte(peek(reg_PC+PRGROM1-#8000))
+                reg_A = peek(RAM + peek(reg_PC+PRGROM1-#8000))
             else
-                reg_A = read_byte(peek(reg_PC+PRGROM2-#C000))
+                reg_A = peek(RAM + peek(reg_PC+PRGROM2-#C000))
             end if
             reg_PC += 1
             Negative = (reg_A >= #80)
@@ -260,7 +260,7 @@ global procedure execute()
                 address = peek(reg_PC+PRGROM2-#C000)
             end if
             reg_PC += 1
-            write_byte(address, reg_A)
+            poke(RAM + address, reg_A)
             cycle += 3.0
 
         -- BNE <aa
@@ -322,9 +322,9 @@ global procedure execute()
         -- LDA aa,X
         case #B5 then
             if reg_PC<#C000 then
-                reg_A = read_byte(and_bits(peek(reg_PC+PRGROM1-#8000)+reg_X,#FF))
+                reg_A = peek(RAM + and_bits(peek(reg_PC+PRGROM1-#8000)+reg_X, #FF))
             else
-                reg_A = read_byte(and_bits(peek(reg_PC+PRGROM2-#C000)+reg_X,#FF))
+                reg_A = peek(RAM + and_bits(peek(reg_PC+PRGROM2-#C000)+reg_X, #FF))
             end if
             reg_PC += 1
             Negative = (reg_A >= #80)
@@ -363,11 +363,7 @@ global procedure execute()
             operand = read_byte(fetch_word())
             Negative = (and_bits(operand, N_FLAG)!=0)
             Overflow = (and_bits(operand, V_FLAG)!=0)
-            if and_bits(reg_A, operand) then
-                Zero = 0
-            else
-                Zero = 1
-            end if
+            Zero = (and_bits(reg_A, operand) = 0)
             cycle += 4.0
 
         -- BVC <aa
@@ -473,7 +469,7 @@ global procedure execute()
 
         -- STA aaaa
         case #8D then
-            if reg_PC<#C000 then
+            if reg_PC < #C000 then
                 temp = PRGROM1+reg_PC-#8000
             else
                 temp = PRGROM2+reg_PC-#C000
@@ -498,11 +494,11 @@ global procedure execute()
         -- ASL
         case #0A then
             reg_A += reg_A
-            if reg_A<#100 then
+            if reg_A < #100 then
                 Carry = 0
             else
                 Carry = 1
-                reg_A = and_bits(reg_A,#FF)
+                reg_A = and_bits(reg_A, #FF)
             end if
             Negative = (reg_A >= #80)
             Zero = (reg_A = 0)
@@ -510,13 +506,13 @@ global procedure execute()
 
         -- SBC aa
         case #E5 then
-            operand = xor_bits(read_byte(fetch_byte()), #FF)
+            operand = xor_bits(peek(RAM + fetch_byte()), #FF)
             ADC_()
             cycle += 3.0
 
         -- CMP aa
         case #C5 then
-            operand = reg_A - read_byte(fetch_byte())
+            operand = reg_A - peek(RAM + fetch_byte())
             CMP_()
             cycle += 3.0
 
@@ -533,7 +529,7 @@ global procedure execute()
 
         -- ADC aa
         case #65 then
-            operand = read_byte(fetch_byte())
+            operand = peek(RAM + fetch_byte())
             ADC_()
             cycle += 3.0
 
@@ -555,7 +551,7 @@ global procedure execute()
 
         -- LDA aaaa,Y
         case #B9 then
-            reg_A = read_byte(and_bits(fetch_word()+reg_Y,#FFFF))
+            reg_A = read_byte(and_bits(fetch_word()+reg_Y, #FFFF))
             Negative = (reg_A >= #80)
             Zero = (reg_A = 0)
             cycle += 5.0
@@ -654,7 +650,7 @@ global procedure execute()
 
         -- ORA aa
         case #05 then
-            operand = read_byte(fetch_byte())
+            operand = peek(RAM + fetch_byte())
             ORA_()
             cycle += 3.0
 
@@ -754,7 +750,7 @@ global procedure execute()
 
         -- CPX aa
         case #E4 then
-            operand = reg_X-read_byte(fetch_byte())
+            operand = reg_X - peek(RAM + fetch_byte())
             CMP_()
             cycle += 3.0
 
@@ -773,9 +769,9 @@ global procedure execute()
         -- LDX aa
         case #A6 then
             if reg_PC < #C000 then
-                reg_X = read_byte(peek(reg_PC+PRGROM1-#8000))
+                reg_X = peek(RAM + peek(reg_PC+PRGROM1-#8000))
             else
-                reg_X = read_byte(peek(reg_PC+PRGROM2-#C000))
+                reg_X = peek(RAM + peek(reg_PC+PRGROM2-#C000))
             end if
             reg_PC += 1
             Negative = (reg_X >= #80)
@@ -784,7 +780,7 @@ global procedure execute()
 
         -- STX aa
         case #86 then
-            write_byte(fetch_byte(), reg_X)
+            poke(RAM + fetch_byte(), reg_X)
             cycle += 3.0
 
         -- SBC aaaa
@@ -814,10 +810,10 @@ global procedure execute()
 
         -- EOR aa
         case #45 then
-            if reg_PC<#C000 then
-                operand = read_byte(peek(reg_PC+PRGROM1-#8000))
+            if reg_PC < #C000 then
+                operand = peek(RAM + peek(reg_PC+PRGROM1-#8000))
             else
-                operand = read_byte(peek(reg_PC+PRGROM2-#C000))
+                operand = peek(RAM + peek(reg_PC+PRGROM2-#C000))
             end if
             reg_PC += 1
             EOR_()
@@ -857,7 +853,7 @@ global procedure execute()
 
         -- LDY aa,X
         case #B4 then
-            reg_Y = read_byte(and_bits(fetch_byte()+reg_X, #FF))
+            reg_Y = peek(RAM + and_bits(fetch_byte()+reg_X, #FF))
             Negative = (reg_Y >= #80)
             Zero = (reg_Y = 0)
             cycle += 4.0
@@ -875,7 +871,7 @@ global procedure execute()
 
         -- CMP aa,X
         case #D5 then
-            operand = reg_A-read_byte(zpx8())
+            operand = reg_A - peek(RAM + zpx8())
             CMP_()
             cycle += 4.0
 
@@ -899,16 +895,16 @@ global procedure execute()
 
         -- ORA aa,X
         case #15 then
-            operand = read_byte(zpx8())
+            operand = peek(RAM + zpx8())
             ORA_()
             cycle += 4.0
 
         -- LDY aa
         case #A4 then
-            if reg_PC<#C000 then
-                reg_Y = read_byte(peek(reg_PC+PRGROM1-#8000))
+            if reg_PC < #C000 then
+                reg_Y = peek(RAM + peek(reg_PC+PRGROM1-#8000))
             else
-                reg_Y = read_byte(peek(reg_PC+PRGROM2-#C000))
+                reg_Y = peek(RAM + peek(reg_PC+PRGROM2-#C000))
             end if
             reg_PC += 1
             Negative = (reg_Y >= #80)
@@ -917,7 +913,7 @@ global procedure execute()
 
         -- CMP aaaa,X
         case #DD then
-            operand = reg_A-read_byte(and_bits(fetch_word()+reg_X, #FFFF))
+            operand = reg_A - read_byte(and_bits(fetch_word()+reg_X, #FFFF))
             CMP_()
             cycle += 4.0
 
@@ -935,7 +931,7 @@ global procedure execute()
 
         -- ADC aa,X
         case #75 then
-            operand = read_byte(and_bits(fetch_byte()+reg_X,#FF))
+            operand = peek(RAM + and_bits(fetch_byte()+reg_X, #FF))
             ADC_()
             cycle += 4.0
 
@@ -947,7 +943,7 @@ global procedure execute()
 
         -- AND aa,X
         case #35 then
-            operand = read_byte(zpx8())
+            operand = peek(RAM + zpx8())
             AND_()
             cycle += 4.0
 
@@ -986,7 +982,7 @@ global procedure execute()
 
         -- AND aa
         case #25 then
-            operand = read_byte(fetch_byte())
+            operand = peek(RAM + fetch_byte())
             AND_()
             cycle += 3.0
 
@@ -1079,7 +1075,7 @@ global procedure execute()
 
         -- CPY aa
         case #C4 then
-            operand = reg_Y-read_byte(fetch_byte())
+            operand = reg_Y - peek(RAM + fetch_byte())
             CMP_()
             cycle += 3.0
 
@@ -1133,14 +1129,10 @@ global procedure execute()
 
         -- BIT aa
         case #24 then
-            operand = read_byte(fetch_byte())
+            operand = peek(RAM + fetch_byte())
             Negative = (and_bits(operand,N_FLAG)!=0)
             Overflow = (and_bits(operand,V_FLAG)!=0)
-            if and_bits(reg_A, operand) then
-                Zero = 0
-            else
-                Zero = 1
-            end if
+            Zero = (and_bits(reg_A, operand) = 0)
             cycle += 3.0
 
         -- LDX aa,Y
@@ -1207,7 +1199,7 @@ global procedure execute()
 
         -- STY aa,X
         case #94 then
-            write_byte(zpx8(), reg_Y)
+            poke(RAM + zpx8(), reg_Y)
             cycle += 4.0
 
         -- AND aaaa,Y
@@ -1281,7 +1273,7 @@ global procedure execute()
 
         -- EOR aa,X
         case #55 then
-            operand = read_byte(zpx8())
+            operand = peek(RAM + zpx8())
             EOR_()
             cycle += 4.0
 
