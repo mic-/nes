@@ -1,22 +1,22 @@
 -- Eutendo : A NES emulator written in euphoria
--- /Mic, 2003
+-- /Mic, 2003,2019
 --
 -- 2003-11-12:
--- *	Fixed N-flag bug in compare instructions.
--- *	Fixed BRK return address.
--- *	Fixed conditional branch instruction timing when crossing pages.
--- *	Changed some PPU addressing code.
+-- * Fixed N-flag bug in compare instructions.
+-- * Fixed BRK return address.
+-- * Fixed conditional branch instruction timing when crossing pages.
+-- * Changed some PPU addressing code.
 --
 -- 2003-11-10:
--- *	Fixed vertical scrolling. Fixes games such as Ice hockey, Tiger Heli,
---	Rush 'n' attack, 1942 and many others.
--- *	Fixed a bug in write_byte() [memory.e]. Scrolling in Excitebike now
---	works.
--- * 	Changed sprite DMA timing. Effects scrolling in Excitebike.
--- *	Added mapper 1  (MMC1).
--- *	Added mapper 11 (used in some Color Dreams titles, like Crystal mines).
--- *	Added mapper 66 (SMB/Duckhunt, Gumshoe etc.).
--- *	Added mapper 71 (Camerica).
+-- * Fixed vertical scrolling. Fixes games such as Ice hockey, Tiger Heli,
+--   Rush 'n' attack, 1942 and many others.
+-- * Fixed a bug in write_byte() [memory.e]. Scrolling in Excitebike now
+--   works.
+-- * Changed sprite DMA timing. Effects scrolling in Excitebike.
+-- * Added mapper 1  (MMC1).
+-- * Added mapper 11 (used in some Color Dreams titles, like Crystal mines).
+-- * Added mapper 66 (SMB/Duckhunt, Gumshoe etc.).
+-- * Added mapper 71 (Camerica).
 
 without warning
 without type_check
@@ -27,308 +27,304 @@ include 6502.e
 include debug.e
 include beeampee4.ew
 
-
 constant lpstr = allocate(65),
          szAppName = allocate(65),
- 	 ofn 		= allocate(SIZE_OF_OPENFILENAME),
- 	 szOfnFileName	= allocate_string(repeat(0,256)),
- 	 szOfnFilter	= allocate_string("NES files (*.nes)" & 0 & "*.nes" & 0 &
-                         	          "BIN files (*.bin)" & 0 & "*.bin" & 0),
- 	 szOfnTitle	= allocate_string("Load ROM")
+         ofn = allocate(SIZE_OF_OPENFILENAME),
+         szOfnFileName = allocate_string(repeat(0,256)),
+         szOfnFilter = allocate_string("NES files (*.nes)" & 0 & "*.nes" & 0 &
+                                       "BIN files (*.bin)" & 0 & "*.bin" & 0),
+         szOfnTitle = allocate_string("Load ROM")
 
 constant emptyScrollList = repeat({240,0},240)
 
 -- Menues
 constant
-	IDM_LOAD	= 101,
-	IDM_INFO	= 102,
-	IDM_EXIT	= 105,
+    IDM_LOAD   = 101,
+    IDM_INFO   = 102,
+    IDM_EXIT   = 105,
 
-	IDM_RUN		= 201,
-	IDM_PAUSE	= 202,
-	IDM_STOP	= 203,
-	IDM_RESET	= 204,
-	
-	IDM_1X		= 301,
-	IDM_2X		= 302,
-	IDM_4X		= 303,
-	
-	IDM_SKIP0	= 311,
-	IDM_SKIP1	= 312,
-	IDM_SKIP2	= 313,
-	IDM_SKIP3	= 314,
-	IDM_SKIP4	= 315,
-	IDM_SKIP5	= 316,
-	IDM_SKIP6	= 317,
-	IDM_SKIP7	= 318,
+    IDM_RUN    = 201,
+    IDM_PAUSE  = 202,
+    IDM_STOP   = 203,
+    IDM_RESET  = 204,
 
-	IDM_ABOUT	= 501,
-	IDM_README	= 503
+    IDM_1X     = 301,
+    IDM_2X     = 302,
+    IDM_4X     = 303,
+
+    IDM_SKIP0  = 311,
+    IDM_SKIP1  = 312,
+    IDM_SKIP2  = 313,
+    IDM_SKIP3  = 314,
+    IDM_SKIP4  = 315,
+    IDM_SKIP5  = 316,
+    IDM_SKIP6  = 317,
+    IDM_SKIP7  = 318,
+
+    IDM_ABOUT  = 501,
+    IDM_README = 503
 
 
          
-atom wc,			-- Window class
-     hinst,			-- Instance handle 
-     hwnd,			-- Window handle
-     msg,			-- Windowmessage
-     hstatus,			-- Handle of status window
-     dc,			-- Device context
-     rect,			-- RECT
-     ps,			-- Paint struct
-     vscreen,			-- Virtual screen
-     patternTbl,		-- Pattern table
-     bi,			-- Bitmap info
-     menu,			-- Menu handle
-     file_pop,			-- Popup menu handle
-     nes_pop,			-- ...
-     video_pop,			-- ...
-     vsize_pop,			-- ...
+atom wc,          -- Window class
+     hinst,       -- Instance handle
+     hwnd,        -- Window handle
+     msg,         -- Windowmessage
+     hstatus,     -- Handle of status window
+     dc,          -- Device context
+     rect,        -- RECT
+     ps,          -- Paint struct
+     vscreen,     -- Virtual screen
+     patternTbl,  -- Pattern table
+     bi,          -- Bitmap info
+     menu,        -- Menu handle
+     file_pop,    -- Popup menu handle
+     nes_pop,     -- ...
+     video_pop,   -- ...
+     vsize_pop,   -- ...
      skip_pop,
      debug_pop,
      help_pop,
-     nextLine			-- Number of cycles when next hblank will occur
+     nextLine     -- Number of cycles when next hblank will occur
      
-integer iScreenLayout,		-- VRAM layout
-	frame,
-	frames,
-	skip,
-	ppu1,
-	ppu2,
-	ppustat,
-	run,
-	rom_loaded,
-	quit,
-	sizeMultiplier
+integer iScreenLayout,  -- VRAM layout
+    frame,
+    frames,
+    skip,
+    ppu1,
+    ppu2,
+    ppustat,
+    run,
+    rom_loaded,
+    quit,
+    sizeMultiplier
 
 sequence dis,
-	 tiles,
-	 tileColor,
-	 spriteColor,
-	 palette
+     tiles,
+     tileColor,
+     spriteColor,
+     palette
 
 atom memory,
      frameCycle
 
         
 function get_bytes(integer fn, integer count)
-	integer ch
-	sequence s
-	
-	s = {}
-	
-	for i=1 to count do
-		ch = getc(fn)
-		if ch=-1 then
-			exit
-		end if
-		s &= ch
-	end for
-	
-	return s
+    integer ch
+    sequence s
+
+    s = {}
+
+    for i = 1 to count do
+        ch = getc(fn)
+        if ch = -1 then
+            exit
+        end if
+        s &= ch
+    end for
+
+    return s
 end function
 
 
 
 procedure poke_word(atom dest,object word)
- 	if sequence(word) then
-  		for i=1 to length(word) do
-   			poke(dest+((i-1)*2),and_bits(word[i],#00FF))
-   			poke(dest+((i-1)*2)+1,floor(and_bits(word[i],#FF00)/256))
-  		end for
- 	else
-  		poke(dest,and_bits(word,#00FF))
-  		poke(dest+1,floor(and_bits(word,#FF00)/256))
- 	end if
+    if sequence(word) then
+        for i=1 to length(word) do
+            poke(dest+((i-1)*2), and_bits(word[i],#00FF))
+            poke(dest+((i-1)*2)+1, floor(and_bits(word[i],#FF00)/256))
+        end for
+    else
+        poke(dest, and_bits(word,#00FF))
+        poke(dest+1, floor(and_bits(word,#FF00) / 256))
+    end if
 end procedure
 
 
 function safe_free(atom a)
-	if a>0 then
-		free(a)
-	end if
-	return 0
+    if a>0 then
+        free(a)
+    end if
+    return 0
 end function
 
 
 
 function load_rom(sequence fname)
-	integer fn,tmp,ch
-	sequence sig
+    integer fn,tmp,ch
+    sequence sig
 
-	fn = open(fname, "rb")
-	if fn=-1 then
-		return 0
-	end if
+    fn = open(fname, "rb")
+    if fn=-1 then
+        return 0
+    end if
 
-	sig = get_bytes(fn, 3)
-	if not equal(sig,"NES") then
-		close (fn)
-		puts(1,"Not a valid iNES file\n")
-		return 0
-	end if
-	
-	tmp = getc(fn)
-	nPrgPages = getc(fn)
-	nChrPages = getc(fn)
-	
-	tmp = getc(fn)
-	ch = getc(fn)
-	
-	vramMirroring = and_bits(tmp, 1)
-	iScreenLayout = and_bits(tmp, 8)
-	mapper = and_bits(tmp, #F0)
-	mapper = floor(mapper/16) + and_bits(ch, #F0)
-	
-	if iScreenLayout then
-		puts(1,"4-screen\n")
-		ntmirrors = {#2000,#2400,#2800,#2C00}
-	elsif vramMirroring=HORIZONTAL then
-		ntmirrors = {#2000,#2000,#2400,#2400}
-	else
-		ntmirrors = {#2000,#2400,#2000,#2400}
-	end if
-	
-	-- Stupid hack. Mapper 3 appears as mapper 67 in some ROMs.
-	if mapper=64 then
-		if nPrgPages<=2 then
-			if nChrPages>1 then
-				mapper = 3
-			else
-				mapper = 0
-			end if
-		end if
-	elsif mapper=65 then
-		mapper = 1
-	elsif mapper=66 then
-		if nChrPages=0 then
-			mapper = 2
-		end if
-	elsif mapper=67 then
-		mapper = 3
-	end if
-	
-	sig = get_bytes(fn, 8)
+    sig = get_bytes(fn, 3)
+    if not equal(sig, "NES") then
+        close (fn)
+        puts(1, "Not a valid iNES file\n")
+        return 0
+    end if
 
-	if mapper=0 then
+    tmp = getc(fn)
+    nPrgPages = getc(fn)
+    nChrPages = getc(fn)
 
-	-- MMC1
-	elsif mapper=1 then
-		chrRomPage = 0
-		refreshPatternTable = 0
-	
-	-- PRG-ROM switch
-	elsif mapper=2 then
-	
-	-- VROM switch
-	elsif mapper=3 then
-		chrRomPage = 0
-		refreshPatternTable = 0
-	
-	elsif mapper=11 then
-		prgRomPage = 0
-		chrRomPage = 0
-		refreshPatternTable = 0
+    tmp = getc(fn)
+    ch = getc(fn)
 
-	elsif mapper=66 then
-		prgRomPage = 0
-		chrRomPage = 0
-		refreshPatternTable = 0
-	
-	elsif mapper=71 then
-	
-	else
-		close(fn)
-		printf(logfile,"PRG-ROM pages: %d\nCHR-ROM pages: %d\nMirroring: %d\n",{nPrgPages,nChrPages,vramMirroring})
-		printf(logfile,"Unsupported mapper (%d)\n",mapper) 
-		if message_box(sprintf("Unsupported mapper (%d)",mapper),"Error",MB_OK) then end if
-		return 0
-	end if
+    vramMirroring = and_bits(tmp, 1)
+    iScreenLayout = and_bits(tmp, 8)
+    mapper = and_bits(tmp, #F0)
+    mapper = floor(mapper/16) + and_bits(ch, #F0)
 
-	-- Free old memory, if any
-	chrMem = safe_free(chrMem)
-	prgMem = safe_free(prgMem)
-	
-	if nChrPages then
-		chrMem = allocate(nChrPages*#2000)
-		if chrMem<=0 then
-			puts(logfile,"Out of memory\n")
-			close(fn)
-			return 0
-		end if
-	end if
-	if nPrgPages then
-		prgMem = allocate(nPrgPages*#4000)
-		if prgMem<=0 then
-			puts(logfile,"Out of memory\n")
-			close(fn)
-			return 0
-		end if
-	end if
+    if iScreenLayout then
+        puts(1, "4-screen\n")
+        ntmirrors = {#2000,#2400,#2800,#2C00}
+    elsif vramMirroring=HORIZONTAL then
+        ntmirrors = {#2000,#2000,#2400,#2400}
+    else
+        ntmirrors = {#2000,#2400,#2000,#2400}
+    end if
 
-	for i=0 to (nPrgPages*#4000)-1 do
-		poke(prgMem+i,getc(fn))
-	end for
-	
-	for i=0 to (nChrPages*#2000)-1 do
-		poke(chrMem+i,getc(fn))
-	end for
+    -- Stupid hack. Mapper 3 appears as mapper 67 in some ROMs.
+    if mapper = 64 then
+        if nPrgPages <= 2 then
+            if nChrPages > 1 then
+                mapper = 3
+            else
+                mapper = 0
+            end if
+        end if
+    elsif mapper = 65 then
+        mapper = 1
+    elsif mapper = 66 then
+        if nChrPages = 0 then
+            mapper = 2
+        end if
+    elsif mapper=67 then
+        mapper = 3
+    end if
 
-	PATTBL0 = chrMem
-	PATTBL1 = chrMem+#1000
-	if mapper=0 then
-		PRGROM1 = prgMem
-		PRGROM2 = prgMem + (nPrgPages-1)*#4000
-	elsif mapper=1 then
-		PRGROM1 = prgMem
-		PRGROM2 = prgMem + (nPrgPages-1)*#4000
-		if not nChrPages then
-			PATTBL0 = VRAM
-			PATTBL1 = VRAM+#1000
-		end if
-	
-	elsif mapper=2 then
-		PRGROM1 = prgMem
-		PRGROM2 = prgMem + (nPrgPages-1)*#4000
-		PATTBL0 = VRAM
-		PATTBL1 = VRAM+#1000
-	
-	elsif mapper=3 then
-		PRGROM1 = prgMem
-		PRGROM2 = prgMem + (nPrgPages-1)*#4000
-	
-	elsif mapper=11 then
-		PRGROM1 = prgMem
-		PRGROM2 = PRGROM1+#4000
+    sig = get_bytes(fn, 8)
 
-	elsif mapper=66 then
-		PRGROM1 = prgMem
-		PRGROM2 = PRGROM1+#4000
-		
-	elsif mapper=71 then
-		PRGROM1 = prgMem
-		PRGROM2 = prgMem + (nPrgPages-1)*#4000
-		PATTBL0 = VRAM
-		PATTBL1 = VRAM+#1000	
-	end if
-	
-	
-	refreshPatternTable = 0
-	
-	close(fn)
-	
-	tmp = 1
-	for i=length(fname) to 1 by -1 do
-		if fname[i]='\\' then
-			tmp = i+1
-			exit
-		end if
-	end for
-	
-	SetWindowText(hwnd,"Eutendo - "&fname[tmp..length(fname)])
+    if mapper = 0 then
 
-	rom_loaded = 1
-	
-	return 1
+    -- MMC1
+    elsif mapper = 1 then
+        chrRomPage = 0
+        refreshPatternTable = 0
+
+    -- PRG-ROM switch
+    elsif mapper = 2 then
+
+    -- VROM switch
+    elsif mapper = 3 then
+        chrRomPage = 0
+        refreshPatternTable = 0
+
+    elsif mapper = 11 then
+        prgRomPage = 0
+        chrRomPage = 0
+        refreshPatternTable = 0
+
+    elsif mapper = 66 then
+        prgRomPage = 0
+        chrRomPage = 0
+        refreshPatternTable = 0
+
+    elsif mapper = 71 then
+
+    else
+        close(fn)
+        printf(logfile, "PRG-ROM pages: %d\nCHR-ROM pages: %d\nMirroring: %d\n", {nPrgPages, nChrPages, vramMirroring})
+        printf(logfile, "Unsupported mapper (%d)\n", mapper)
+        if message_box(sprintf("Unsupported mapper (%d)", mapper), "Error", MB_OK) then end if
+        return 0
+    end if
+
+    -- Free old memory, if any
+    chrMem = safe_free(chrMem)
+    prgMem = safe_free(prgMem)
+
+    if nChrPages then
+        chrMem = allocate(nChrPages*#2000)
+            if chrMem <= 0 then
+                puts(logfile,"Out of memory\n")
+                close(fn)
+                return 0
+            end if
+    end if
+    if nPrgPages then
+        prgMem = allocate(nPrgPages*#4000)
+        if prgMem <= 0 then
+            puts(logfile,"Out of memory\n")
+            close(fn)
+            return 0
+        end if
+    end if
+
+    for i = 0 to (nPrgPages*#4000)-1 do
+        poke(prgMem+i, getc(fn))
+    end for
+
+    for i = 0 to (nChrPages*#2000)-1 do
+        poke(chrMem+i, getc(fn))
+    end for
+
+    PATTBL0 = chrMem
+    PATTBL1 = chrMem+#1000
+    if mapper = 0 then
+        PRGROM1 = prgMem
+        PRGROM2 = prgMem + (nPrgPages-1)*#4000
+    elsif mapper = 1 then
+        PRGROM1 = prgMem
+        PRGROM2 = prgMem + (nPrgPages-1)*#4000
+        if not nChrPages then
+            PATTBL0 = VRAM
+            PATTBL1 = VRAM+#1000
+        end if
+
+    elsif mapper = 2 then
+        PRGROM1 = prgMem
+        PRGROM2 = prgMem + (nPrgPages-1)*#4000
+        PATTBL0 = VRAM
+        PATTBL1 = VRAM+#1000
+
+    elsif mapper = 3 then
+        PRGROM1 = prgMem
+        PRGROM2 = prgMem + (nPrgPages-1)*#4000
+
+    elsif mapper = 11 then
+        PRGROM1 = prgMem
+        PRGROM2 = PRGROM1+#4000
+
+    elsif mapper = 66 then
+        PRGROM1 = prgMem
+        PRGROM2 = PRGROM1+#4000
+
+    elsif mapper = 71 then
+        PRGROM1 = prgMem
+        PRGROM2 = prgMem + (nPrgPages-1)*#4000
+        PATTBL0 = VRAM
+        PATTBL1 = VRAM+#1000
+    end if
+
+    refreshPatternTable = 0
+
+    close(fn)
+
+    tmp = 1
+    for i = length(fname) to 1 by -1 do
+        if fname[i]='\\' then
+            tmp = i+1
+            exit
+        end if
+    end for
+    SetWindowText(hwnd, "Eutendo - "&fname[tmp..length(fname)])
+
+    rom_loaded = 1
+    return 1
 end function
 
 
@@ -336,46 +332,46 @@ end function
 
 -- Combine the bitplanes in the pattern table and convert to 8 bpp
 procedure init_pattern_table()
-	integer mask,offs,fn,b
-	sequence row
-	atom PATTBL
-	
-	offs = 0
-	row = {0,0,0,0,0,0,0,0}
+    integer mask,offs,fn,b
+    sequence row
+    atom PATTBL
 
-	-- Start with the first 4k
-	PATTBL = PATTBL0
-	for table=0 to 1 do
-		for pat=0 to 255 do
-			for y=0 to 7 do
-				for plane=0 to 1 do
-					mask = #80
-					b = peek(PATTBL + plane*8 + offs)
-					for bit=0 to 7 do
-						if and_bits(b,mask) then
-							row[bit+1] += plane +1 
-						end if
-						mask = floor(mask/2)
-					end for
-				end for
-				poke(patternTbl + table*#4000 + pat*64 + y*8, row)
-				row = {0,0,0,0,0,0,0,0}
-				offs += 1
-			end for
-			offs += 8
-		end for
-		
-		-- Then do the second 4k
-		PATTBL = PATTBL1
-		offs = 0
-	end for
+    offs = 0
+    row = {0,0,0,0,0,0,0,0}
+
+    -- Start with the first 4k
+    PATTBL = PATTBL0
+    for table = 0 to 1 do
+        for pat = 0 to 255 do
+            for y = 0 to 7 do
+                for plane = 0 to 1 do
+                    mask = #80
+                    b = peek(PATTBL + plane*8 + offs)
+                    for bit = 0 to 7 do
+                        if and_bits(b, mask) then
+                            row[bit+1] += plane + 1
+                        end if
+                        mask = floor(mask/2)
+                    end for
+                end for
+                poke(patternTbl + table*#4000 + pat*64 + y*8, row)
+                row = {0,0,0,0,0,0,0,0}
+                offs += 1
+            end for
+            offs += 8
+        end for
+
+        -- Then do the second 4k
+        PATTBL = PATTBL1
+        offs = 0
+    end for
 end procedure
 
 
 
 procedure dump_patterntable()
-	if SaveBitmap("pattern_tbl.bmp",{patternTbl,8,512,8,0,palette},{patternTbl,8,512,8,0,palette}) then
-	end if
+    if SaveBitmap("pattern_tbl.bmp",{patternTbl,8,512,8,0,palette},{patternTbl,8,512,8,0,palette}) then
+    end if
 end procedure
 
 
@@ -394,1078 +390,794 @@ end procedure
 --        |      |          |   c = Upper two (2) bits of colour   |
 --        |  3   | XXXXXXXX | X Coordinate (upper-left corner)     |
 procedure draw_sprite(integer x,integer y,integer height,integer attrib,integer tile,atom pattern)
-	integer i,hflip,vflip,screenOffs,y2,vflipInc,width
-	sequence p
-	
-	screenOffs = y*256 + x
-	pattern += tile*64
+    integer i,hflip,vflip,screenOffs,y2,vflipInc,width
+    sequence p
 
-	hflip = and_bits(attrib,#40)
-	vflip = and_bits(attrib,#80)
-	attrib = and_bits(attrib,3)*4 + 64	-- Add 64 to index the sprite palette
-	
-	if y>239 then
-		return
-	end if
-	
-	width = 8
-	if x+width>#FF then
-		width = (256-x)
-	end if
-		
-	if height = 8 then
-		y2 = 7
-		if y+7>239 then
-			y2 -= (y+7-240)
-		end if
+    screenOffs = y*256 + x
+    pattern += tile*64
 
-		vflipInc = 56
-	else
-		y2 = 15
-		if y+15>239 then
-			y2 -= (y+15-240)
-		end if
+    hflip = and_bits(attrib, #40)
+    vflip = and_bits(attrib, #80)
+    attrib = and_bits(attrib, 3)*4 + 64  -- Add 64 to index the sprite palette
 
-		-- Odd tiles are taken from second pattern table, even ones from the first
-		if and_bits(tile,1) then
-			pattern = patternTbl + #4000 + (tile-1)*64
-		end if
+    if y > 239 then
+        return
+    end if
 
-		vflipInc = 120
-	end if
-	
-		
-	if hflip then
-		if vflip then
-			pattern += vflipInc
-			for v=0 to y2 do
-				p = reverse(peek({pattern,width}))
-				for h=1 to width do
-					i = p[h]
-					if and_bits(i,#3) then
-						poke(vscreen+screenOffs,i+attrib)
-					end if
-					screenOffs += 1
-				end for	
-				screenOffs += 248 + (8-width)
-				pattern -= 8
-			end for
-		else
-			for v=0 to y2 do
-				p = reverse(peek({pattern,width}))
-				for h=1 to width do
-					i = p[h]
-					if and_bits(i,#3) then
-						poke(vscreen+screenOffs,i+attrib)
-					end if
-					screenOffs += 1
-				end for	
-				screenOffs += 248 + (8-width)
-				pattern += 8
-			end for
-		end if
-	elsif vflip then
-		pattern += vflipInc
-		for v=0 to y2 do
-			p = peek({pattern,width})
-			for h=1 to width do
-				i = p[h]
-					if and_bits(i,#3) then
-						poke(vscreen+screenOffs,i+attrib)
-					end if
-					screenOffs += 1
-				end for	
-				screenOffs += 248 + (8-width)
-				pattern -= 8
-			end for
-	else
-		for v=0 to y2 do
-			p = peek({pattern,width})
-			for h=1 to width do
-				i = p[h]
-				if and_bits(i,#3) then
-					poke(vscreen+screenOffs,i+attrib)
-				end if
-				screenOffs += 1
-			end for	
-			screenOffs += 248 + (8-width)
-			pattern += 8
-		end for
-	end if
-end procedure
-	
+    width = 8
+    if x+width>#FF then
+        width = (256-x)
+    end if
 
-
-
-
--- Not used, replaced by draw_scanline()
-procedure draw_frame()
-	integer c,n,m,nameTblAdr,attribOffs,attribMask,square,sprTblAdr,
-	        attrib,hTile,vTile,ht,vt,l1,l2,sx,sy,spriteClip,spriteHeight,
-	        ntPtr,tileRow,tileColm,x,h,scrollRange,si,first,last,patternSelect
-	atom ptr,destptr
-	sequence p
-
-	-- Refresh the pattern table if necessary (ie. if a new VROM bank was swapped in)
-	if refreshPatternTable then
-		init_pattern_table()
-		refreshPatternTable = 0
-	end if
-	
-	ppu1 = peek(RAM+PPUCTR1)
-	ppu2 = peek(RAM+PPUCTR2)
-	
-	n = and_bits(ppu1,3)
-	nameTblAdr = #2000 + (n*#400)
-
-	--printf(1,"nameTblAdr = %04x\n",nameTblAdr)
-	
-	spriteClip = and_bits(ppu2,4)*2
-	
-	for i=0 to 15 do
-		c = and_bits(peek(VRAM+#3F00+i),#03F)
-		poke(bi+RGBQUAD+(i*4),palette[c+1])
-
-		c = and_bits(peek(VRAM+#3F10+i),#03F)
-		poke(bi+RGBQUAD+((i+64)*4),palette[c+1])
-	end for
-	
-	spriteHeight = 8
-	if and_bits(ppu1,32) then
-		spriteHeight = 16
-	end if
-	
-	if and_bits(ppu2,1) then
-		m = and_bits(ppu2,#E0)
-		if m=0 then
-			n = 128
-		elsif m=#20 then
-			n = 129
-		elsif m=#40 then
-			n = 130
-		else
-			n = 131
-		end if
-		mem_set(vscreen,n,#F000)
-	else
-		mem_set(vscreen,0,#F000) 
-	end if
-	
-
-	-- Draw all sprites that are behind the BG				
-       	ptr = patternTbl + (and_bits(ppu1,#8)!=0)*#4000
-	-- Are sprites enabled ?
-       	if and_bits(ppu2,#10) then
-        	n = 252
-        	for i=63 to 0 by -1 do
-        		attrib = peek(SPRRAM+n+2)
-
-			-- Should this sprite go behind the BG ?
-       			if and_bits(attrib,#20) then
-	        		sx = peek(SPRRAM+n+3)
-	        		if sx>spriteClip then
-		        		sy = peek(SPRRAM+n)+1
-	 				draw_sprite(sx,sy,spriteHeight,attrib,peek(SPRRAM+n+1),ptr)       					
-				end if
-        		end if
-        		n -= 4
-        	end for
+    if height = 8 then
+        y2 = 7
+        if y+7 > 239 then
+            y2 -= (y+7-240)
         end if
-        
-        --? scrollList[1..4]
-        
-        -- Now draw the BG
-	if and_bits(ppu2,8) then
-	
-		vTile = 0
-		hTile = 0
-		attrib = 0
-		if scrollLP then
-			scrollRange = scrollList[1][1]
-		else
-			scrollRange = 240
-		end if
-		patternSelect = (and_bits(ppu1,#10)!=0)*#4000
-		si = 1
-		
-		n = 0
-		tileRow = and_bits(vScroll,7)
-		for v=0 to 239 do
-			-- Update horizontal scroll offset
-			if v>=scrollRange then
-				p = scrollList[si]
-				si += 1
-				hScroll = p[2]
-				patternSelect = p[3]*#4000
-				if si<=scrollLP then
-					scrollRange = scrollList[si][1]
-				else
-					scrollRange = 240
-				end if
-			end if
-				
-			tileColm = and_bits(hScroll,7)
-			vt = floor((vScroll+v)/8)
-			ht = 0
-
-			-- Display leftmost column ?
-			if and_bits(ppu2,2) then
-				x = 0
-				first = 0
-			else
-				x = 8
-				n += 8
-				first = 1
-				ht = 1
-			end if
-			
-			while x<256 do
-				h = floor((x+hScroll)/8)
-				
-				ntPtr = nameTblAdr
-				if h>=32 then
-					ntPtr = xor_bits(ntPtr,#400)
-					h -= 32
-				end if
-				if vt>=32 then
-					ntPtr = xor_bits(ntPtr,#800)
-					vt -= 32
-				end if
-
-				--if vramMirroring=VERTICAL then
-				--	ntPtr = and_bits(ntPtr,#2400)
-				--else
-				--	ntPtr = and_bits(ntPtr,#2800)
-				--end if
-    
-    
-				destptr = vscreen+n
-					
-				--ntPtr = and_bits(ntPtr,#2C00)
-				ntPtr += VRAM
-				
-				attribOffs = floor(h/4) + floor(vt/4)*8
-				square = and_bits(vt,2) + (and_bits(h,2)!=0)
-
-				if square=0 then
-					attrib = and_bits(peek(ntPtr+#3C0+attribOffs),#03)*4
-				elsif square=1 then
-					attrib = and_bits(peek(ntPtr+#3C0+attribOffs),#0C)
-				elsif square=2 then
-					attrib = floor(and_bits(peek(ntPtr+#3C0+attribOffs),#30)/4)
-				else
-					attrib = floor(and_bits(peek(ntPtr+#3C0+attribOffs),#C0)/16)
-				end if
-				
-				-- Pointer to correct pattern
-				ptr = patternTbl + patternSelect
-				
-				-- Add the name table value (times size per tile)
-				ptr += peek(ntPtr + vt*32 + h) * 64
-			
-				if ht>first and ht<32 then
-					ptr += (tileRow*8)
-					p = peek({ptr,8})
-					for xx=1 to 8 do
-						m = p[xx]
-						if and_bits(m,#3) then
-							poke(destptr,m+attrib)
-						end if
-						destptr += 1
-					end for
-					x += 8
-					n += 8
-				elsif ht=first then
-					ptr += (tileRow*8)+tileColm
-					p = peek({ptr,8-tileColm})
-					for xx=1 to 8-tileColm do
-						m = p[xx]
-						if and_bits(m,#3) then
-							poke(destptr,m+attrib)
-						end if
-						destptr += 1
-					end for
-					x += 8-tileColm	
-					n += 8-tileColm
-				else
-					ptr += (tileRow*8)
-					p = peek({ptr,tileColm})
-					for xx=1 to tileColm do
-						m = p[xx]
-						if and_bits(m,#3) then
-							poke(destptr,m+attrib)
-						end if
-						destptr += 1
-					end for
-					x += tileColm
-					n += tileColm
-				end if
-
-				ht += 1
-
-			end while
-			tileRow = and_bits(tileRow+1,7)
-		end for
-	end if
-
-	
-        
-	-- Now draw those sprites that are in front of the BG
-        ptr = patternTbl + (and_bits(ppu1,#8)!=0)*#4000
-        if and_bits(peek(RAM+PPUCTR2),#10) then
-        	n = 252
-        	for i=63 to 0 by -1 do
-        		sx = peek(SPRRAM+n+3)
-        		sy = peek(SPRRAM+n)+1
-        		attrib = peek(SPRRAM+n+2)
-        	
-        		if sx>spriteClip then
-	        		if not and_bits(attrib,#20) then
- 					draw_sprite(sx,sy,spriteHeight,attrib,peek(SPRRAM+n+1),ptr)       					
-        			end if
-        		end if
-        		
-        		n -= 4
-        	end for
+        vflipInc = 56
+    else
+        y2 = 15
+        if y+15 > 239 then
+            y2 -= (y+15-240)
         end if
-        
+        -- Odd tiles are taken from second pattern table, even ones from the first
+        if and_bits(tile,1) then
+            pattern = patternTbl + #4000 + (tile-1)*64
+        end if
+        vflipInc = 120
+    end if
 
-	-- Copy the virtual screen to the window
-	
-	mem_set(bi,0,SIZE_OF_BITMAPINFOHEADER)
- 	poke4(bi + BITMAPINFOHEADER + biSize,SIZE_OF_BITMAPINFOHEADER)
- 	poke4(bi + BITMAPINFOHEADER + biWidth,256)
- 	poke4(bi + BITMAPINFOHEADER + biHeight,-240)
- 	poke_word(bi + BITMAPINFOHEADER + biPlanes,1)
- 	poke_word(bi + BITMAPINFOHEADER + biBitCount,8)
- 	-- the RGBQUAD entries contains explicit RGB values (actually BGRX..)
- 	poke4(bi + BITMAPINFOHEADER + biCompression,BI_RGB)
- 
- 	if GetClientRect(hwnd,rect) then end if
- 
- 	StretchDIBits({dc,0,0,peek4s(rect + rect_right),peek4s(rect + rect_bottom)-20,
- 	               0,0,256,240,vscreen,bi,DIB_RGB_COLORS,SRCCOPY})
 
+    if hflip then
+        if vflip then
+            pattern += vflipInc
+            for v=0 to y2 do
+                p = reverse(peek({pattern,width}))
+                for h=1 to width do
+                    i = p[h]
+                    if and_bits(i, #3) then
+                        poke(vscreen+screenOffs, i+attrib)
+                    end if
+                    screenOffs += 1
+                end for
+                screenOffs += 248 + (8-width)
+                pattern -= 8
+            end for
+        else
+            for v = 0 to y2 do
+                p = reverse(peek({pattern,width}))
+                for h = 1 to width do
+                    i = p[h]
+                    if and_bits(i, #3) then
+                        poke(vscreen+screenOffs, i+attrib)
+                    end if
+                    screenOffs += 1
+                end for
+                screenOffs += 248 + (8-width)
+                pattern += 8
+            end for
+        end if
+    elsif vflip then
+        pattern += vflipInc
+        for v = 0 to y2 do
+            p = peek({pattern,width})
+            for h = 1 to width do
+                i = p[h]
+                    if and_bits(i, #3) then
+                        poke(vscreen+screenOffs, i+attrib)
+                    end if
+                    screenOffs += 1
+                end for
+                screenOffs += 248 + (8-width)
+                pattern -= 8
+            end for
+    else
+        for v = 0 to y2 do
+            p = peek({pattern,width})
+            for h = 1 to width do
+                i = p[h]
+                if and_bits(i, #3) then
+                    poke(vscreen+screenOffs, i+attrib)
+                end if
+                screenOffs += 1
+            end for
+            screenOffs += 248 + (8-width)
+            pattern += 8
+        end for
+    end if
 end procedure
-
-
-
 
 
 procedure reset_screen()
-	integer m,n
-	
-	-- Refresh the pattern table if necessary (ie. if a new VROM bank was swapped in)
-	if refreshPatternTable then
-		init_pattern_table()
-		refreshPatternTable = 0
-	end if
-	
-	ppu1 = peek(RAM+PPUCTR1)
-	ppu2 = peek(RAM+PPUCTR2)
-	
-	if and_bits(ppu2,1) then
-		m = and_bits(ppu2,#E0)
-		if m=0 then
-			n = 128
-		elsif m=#20 then
-			n = 129
-		elsif m=#40 then
-			n = 130
-		else
-			n = 131
-		end if
-		mem_set(vscreen,n,#F000)
-	else
-		mem_set(vscreen,0,#F000) 
-	end if
+    integer m,n
+
+    -- Refresh the pattern table if necessary (ie. if a new VROM bank was swapped in)
+    if refreshPatternTable then
+        init_pattern_table()
+        refreshPatternTable = 0
+    end if
+
+    ppu1 = peek(RAM + PPUCTR1)
+    ppu2 = peek(RAM + PPUCTR2)
+
+    if and_bits(ppu2, 1) then
+        m = and_bits(ppu2, #E0)
+        if m = 0 then
+            n = 128
+        elsif m = #20 then
+            n = 129
+        elsif m=#40 then
+            n = 130
+        else
+            n = 131
+        end if
+        mem_set(vscreen, n, #F000)
+    else
+        mem_set(vscreen, 0, #F000)
+    end if
 end procedure
 
 
 
 procedure finish_screen()
-	integer c,n,m,sprTblAdr,
-	        sx,sy,spriteClip,spriteHeight,attrib
-	atom ptr,destptr
+    integer c, n, m,
+            sprTblAdr, sx, sy, spriteClip, spriteHeight, attrib
+    atom ptr, destptr
 
-	if frame=skip then
-	
-		ppu1 = peek(RAM+PPUCTR1)
-		ppu2 = peek(RAM+PPUCTR2)
-		
-		spriteClip = and_bits(ppu2,4)*2
-		
-		for i=0 to 15 do
-			c = and_bits(peek(VRAM+#3F10+i),#03F)
-			poke(bi+RGBQUAD+((i+64)*4),palette[c+1])
-		end for
-	
-		spriteHeight = 8
-		if and_bits(ppu1,32) then
-			spriteHeight = 16
-		end if
-	
-		-- Now draw those sprites that are in front of the BG
-	        ptr = patternTbl + (and_bits(ppu1,#8)!=0)*#4000
-	        if and_bits(peek(RAM+PPUCTR2),#10) then
-	        	n = 252
-	        	for i=63 to 0 by -1 do
-	        		sx = peek(SPRRAM+n+3)
-	        		sy = peek(SPRRAM+n)+1
-	        		attrib = peek(SPRRAM+n+2)
-	        	
-	        		if sx>spriteClip then
-		        		if not and_bits(attrib,#20) then
-	 					draw_sprite(sx,sy,spriteHeight,attrib,peek(SPRRAM+n+1),ptr)       					
-	        			end if
-	        		end if
-	        		
-	        		n -= 4
-	        	end for
-	        end if
-	end if        
+    if frame = skip then
+        ppu1 = peek(RAM + PPUCTR1)
+        ppu2 = peek(RAM + PPUCTR2)
 
-	-- Copy the virtual screen to the window
-	
-	mem_set(bi,0,SIZE_OF_BITMAPINFOHEADER)
- 	poke4(bi + BITMAPINFOHEADER + biSize,SIZE_OF_BITMAPINFOHEADER)
- 	poke4(bi + BITMAPINFOHEADER + biWidth,256)
- 	poke4(bi + BITMAPINFOHEADER + biHeight,-240)
- 	poke_word(bi + BITMAPINFOHEADER + biPlanes,1)
- 	poke_word(bi + BITMAPINFOHEADER + biBitCount,8)
- 	-- the RGBQUAD entries contains explicit RGB values (actually BGRX..)
- 	poke4(bi + BITMAPINFOHEADER + biCompression,BI_RGB)
+       spriteClip = and_bits(ppu2,4)*2
+
+       for i = 0 to 15 do
+           c = and_bits(peek(VRAM + #3F10 + i), #03F)
+           poke(bi + RGBQUAD + ((i+64)*4), palette[c+1])
+        end for
+
+        spriteHeight = 8
+        if and_bits(ppu1, 32) then
+            spriteHeight = 16
+        end if
+
+        -- Now draw those sprites that are in front of the BG
+        ptr = patternTbl + (and_bits(ppu1, #8) != 0)*#4000
+        if and_bits(peek(RAM + PPUCTR2), #10) then
+            n = 252
+            for i = 63 to 0 by -1 do
+                sx = peek(SPRRAM+n+3)
+                sy = peek(SPRRAM+n)+1
+                attrib = peek(SPRRAM+n+2)
+
+                if sx>spriteClip then
+                    if not and_bits(attrib,#20) then
+                        draw_sprite(sx,sy,spriteHeight,attrib,peek(SPRRAM+n+1),ptr)
+                    end if
+                end if
+                n -= 4
+            end for
+        end if
+    end if
+
+    -- Copy the virtual screen to the window
+
+    mem_set(bi, 0, SIZE_OF_BITMAPINFOHEADER)
+    poke4(bi + BITMAPINFOHEADER + biSize, SIZE_OF_BITMAPINFOHEADER)
+    poke4(bi + BITMAPINFOHEADER + biWidth, 256)
+    poke4(bi + BITMAPINFOHEADER + biHeight, -240)
+    poke_word(bi + BITMAPINFOHEADER + biPlanes, 1)
+    poke_word(bi + BITMAPINFOHEADER + biBitCount, 8)
+    -- the RGBQUAD entries contains explicit RGB values (actually BGRX..)
+    poke4(bi + BITMAPINFOHEADER + biCompression, BI_RGB)
  
- 	if GetClientRect(hwnd,rect) then end if
+    if GetClientRect(hwnd, rect) then end if
  
- 	StretchDIBits({dc,0,0,peek4s(rect + rect_right),peek4s(rect + rect_bottom)-20,
- 	               0,0,256,240,vscreen,bi,DIB_RGB_COLORS,SRCCOPY})
+    StretchDIBits({dc, 0, 0, peek4s(rect + rect_right), peek4s(rect + rect_bottom)-20,
+                       0, 0, 256, 240, vscreen, bi, DIB_RGB_COLORS, SRCCOPY})
 end procedure
 
 
 
 procedure draw_scanline(integer line)
-	integer c,n,m,nameTblAdr,attribOffs,attribMask,square,
-	        attrib,ht,vt,tileRow,tileColm,x,h,first,patternSelect,
-	        ntBelow
-	atom ptr,ntPtr,destptr
-	sequence p
+    integer c,n,m,nameTblAdr,attribOffs,attribMask,square,
+            attrib,ht,vt,tileRow,tileColm,x,h,first,patternSelect,
+            ntBelow
+    atom ptr,ntPtr,destptr
+    sequence p
 
-	ppu1 = peek(RAM+PPUCTR1)
-	ppu2 = peek(RAM+PPUCTR2)
+    ppu1 = peek(RAM+PPUCTR1)
+    ppu2 = peek(RAM+PPUCTR2)
 
-	patternSelect = (and_bits(ppu1,#10)!=0)*#4000
-	
-	n = and_bits(ppu1,3)
-	nameTblAdr = #2000 + (n*#400)
+    patternSelect = (and_bits(ppu1,#10)!=0)*#4000
 
-	--if vScroll then
-	--	if vramMirroring=VERTICAL then
-	--		nameTblAdr = xor_bits(nameTblAdr,#400)
-	--		ntBelow = #800
-	--	else
-	--		ntBelow = #800
-	--	end if
-	--end if
-	
-	--DEBUG
-	--if vScroll and hScroll then
-	--	puts(1,"D\'oh! trying to scroll diagonally\n")
-	--end if
-	
-	for i=0 to 15 do
-		c = and_bits(peek(VRAM+#3F00+i),#03F)
-		poke(bi+RGBQUAD+(i*4),palette[c+1])
+    n = and_bits(ppu1,3)
+    nameTblAdr = #2000 + (n*#400)
 
-		--c = and_bits(peek(VRAM+#3F10+i),#03F)
-		--poke(bi+RGBQUAD+((i+64)*4),palette[c+1])
-	end for
-	
+    --if vScroll then
+    --  if vramMirroring=VERTICAL then
+    --      nameTblAdr = xor_bits(nameTblAdr,#400)
+    --      ntBelow = #800
+    --  else
+    --      ntBelow = #800
+    --  end if
+    --end if
 
-        -- Now draw the BG
-	if and_bits(ppu2,8) then
-	
-		attrib = 0
-		n = line*256
-		tileRow = and_bits(vScroll+line,7)
+    --DEBUG
+    --if vScroll and hScroll then
+    --  puts(1,"D\'oh! trying to scroll diagonally\n")
+    --end if
 
-		tileColm = and_bits(hScroll,7)
+    for i=0 to 15 do
+        c = and_bits(peek(VRAM+#3F00+i),#03F)
+        poke(bi+RGBQUAD+(i*4),palette[c+1])
 
-		vt = floor((vScroll+line)/8)
-		if vt>=30 then
-			nameTblAdr = xor_bits(nameTblAdr,#800)
-			--nameTblAdr = and_bits(nameTblAdr+#400,#2C00)
-			vt -= 30
-		end if
+        --c = and_bits(peek(VRAM+#3F10+i),#03F)
+        --poke(bi+RGBQUAD+((i+64)*4),palette[c+1])
+    end for
 
-		ht = 0
+    -- Now draw the BG
+    if and_bits(ppu2,8) then
 
-		-- Display leftmost column ?
-		if and_bits(ppu2,2) then
-			x = 0
-			first = 0
-		else
-			x = 8
-			n += 8
-			first = 1
-			ht = 1
-		end if
-			
-		while x<256 do
-			h = floor((x+hScroll)/8)
-				
-			ntPtr = nameTblAdr
-			if h>=32 then
-				ntPtr = xor_bits(ntPtr,#400)
-				--ntPtr = and_bits(ntPtr+#400,#2C00)
-				h -= 32
-			end if
+        attrib = 0
+        n = line*256
+        tileRow = and_bits(vScroll+line,7)
+
+        tileColm = and_bits(hScroll,7)
+
+        vt = floor((vScroll+line)/8)
+        if vt>=30 then
+            nameTblAdr = xor_bits(nameTblAdr,#800)
+            --nameTblAdr = and_bits(nameTblAdr+#400,#2C00)
+            vt -= 30
+        end if
+
+        ht = 0
+
+        -- Display leftmost column ?
+        if and_bits(ppu2,2) then
+            x = 0
+            first = 0
+        else
+            x = 8
+            n += 8
+            first = 1
+            ht = 1
+        end if
+
+        while x<256 do
+            h = floor((x+hScroll)/8)
+
+            ntPtr = nameTblAdr
+            if h>=32 then
+                ntPtr = xor_bits(ntPtr,#400)
+                --ntPtr = and_bits(ntPtr+#400,#2C00)
+                h -= 32
+            end if
     
-			destptr = vscreen+n
-			ntPtr = ntmirrors[floor(and_bits(ntPtr,#C00)/#400)+1]
-			
-			--DEBUG
-			--if vScroll and x<16 then
-			--	printf(1,"ntPtr = %04x (%04x) at line %d, vScroll=%d\n",{ntPtr,nameTblAdr,line,vScroll})
-			--end if
-			
-			ntPtr += VRAM
-				
-			attribOffs = floor(h/4) + floor(vt/4)*8
-			square = and_bits(vt,2) + (and_bits(h,2)!=0)
+            destptr = vscreen+n
+            ntPtr = ntmirrors[floor(and_bits(ntPtr,#C00)/#400)+1]
 
-			if square=0 then
-				attrib = and_bits(peek(ntPtr+#3C0+attribOffs),#03)*4
-			elsif square=1 then
-				attrib = and_bits(peek(ntPtr+#3C0+attribOffs),#0C)
-			elsif square=2 then
-				attrib = floor(and_bits(peek(ntPtr+#3C0+attribOffs),#30)/4)
-			else
-				attrib = floor(and_bits(peek(ntPtr+#3C0+attribOffs),#C0)/16)
-			end if
-				
-			-- Pointer to correct pattern
-			ptr = patternTbl + patternSelect
-			-- Add the name table value (times size per tile)
-			ptr += peek(ntPtr + vt*32 + h) * 64
-			
-			if ht>first and ht<32 then
-				ptr += (tileRow*8)
-				p = peek({ptr,8})
-				for xx=1 to 8 do
-					m = p[xx]
-					if and_bits(m,#3) then
-						poke(destptr,m+attrib)
-					end if
-					destptr += 1
-				end for
-				x += 8
-				n += 8
-			elsif ht=first then
-				ptr += (tileRow*8)+tileColm
-				p = peek({ptr,8-tileColm})
-				for xx=1 to 8-tileColm do
-					m = p[xx]
-					if and_bits(m,#3) then
-						poke(destptr,m+attrib)
-					end if
-					destptr += 1
-				end for
-				x += 8-tileColm	
-				n += 8-tileColm
-			else
-				ptr += (tileRow*8)
-				p = peek({ptr,tileColm})
-				for xx=1 to tileColm do
-					m = p[xx]
-					if and_bits(m,#3) then
-						poke(destptr,m+attrib)
-					end if
-					destptr += 1
-				end for
-				x += tileColm
-				n += tileColm
-			end if
+            ntPtr += VRAM
 
-			ht += 1
-		end while
-	end if
+            attribOffs = floor(h/4) + floor(vt/4)*8
+            square = and_bits(vt,2) + (and_bits(h,2)!=0)
+
+            if square = 0 then
+                attrib = and_bits(peek(ntPtr+#3C0+attribOffs),#03)*4
+            elsif square = 1 then
+                attrib = and_bits(peek(ntPtr+#3C0+attribOffs),#0C)
+            elsif square = 2 then
+                attrib = floor(and_bits(peek(ntPtr+#3C0+attribOffs),#30)/4)
+            else
+                attrib = floor(and_bits(peek(ntPtr+#3C0+attribOffs),#C0)/16)
+            end if
+
+            -- Pointer to correct pattern
+            ptr = patternTbl + patternSelect
+            -- Add the name table value (times size per tile)
+            ptr += peek(ntPtr + vt*32 + h) * 64
+
+            if ht > first and ht < 32 then
+                ptr += (tileRow*8)
+                p = peek({ptr,8})
+                for xx = 1 to 8 do
+                    m = p[xx]
+                    if and_bits(m, #3) then
+                        poke(destptr, m+attrib)
+                    end if
+                    destptr += 1
+                end for
+                x += 8
+                n += 8
+            elsif ht = first then
+                ptr += (tileRow*8)+tileColm
+                p = peek({ptr,8-tileColm})
+                for xx = 1 to 8-tileColm do
+                    m = p[xx]
+                    if and_bits(m, #3) then
+                        poke(destptr, m+attrib)
+                    end if
+                    destptr += 1
+                end for
+                x += 8-tileColm
+                n += 8-tileColm
+            else
+                ptr += (tileRow*8)
+                p = peek({ptr,tileColm})
+                for xx = 1 to tileColm do
+                    m = p[xx]
+                    if and_bits(m, #3) then
+                        poke(destptr, m+attrib)
+                    end if
+                    destptr += 1
+                end for
+                x += tileColm
+                n += tileColm
+            end if
+
+            ht += 1
+        end while
+    end if
 end procedure
 
-		
 
 integer showstate
 sequence mstate
 showstate = 0
 
 procedure emulate()
-	integer sprite0,sy,tile,hblank
-	atom sPtr
+    integer sprite0, sy, tile, hblank
+    atom sPtr
 
-	poke(lpstr,"Running"&0)
-	SendMessage(hstatus,#401,1,lpstr)
-	
-	sprite0 = -1
-	
-	while run do	
+    poke(lpstr, "Running"&0)
+    SendMessage(hstatus, #401, 1, lpstr)
 
-	--DEBUG
-	if showstate<25 then
-		mstate = disassemble(reg_PC,1)
-		puts(logfile,mstate[1][2])
-		printf(logfile,"\nA=%02xh, X=%02xh, Y=%02x, S=%02xh\n",{reg_A,reg_X,reg_Y,reg_S})
-		printf(logfile,"C=%d, Z=%d, V=%d, N=%d\n\n",{Carry,Zero,Overflow,Negative})
-		
-		showstate += 1
-	end if
-	
-	execute()
-	hblank = 0
-	
-	if cycle > nextLine then 
-		-- HBLANK
-		while cycle>nextLine do
-			if frame=skip then
-				if lines>1 then
-					if lines<241 then --240 then
-						draw_scanline(lines-1)
-					end if
-				else
-					reset_screen()
-					draw_scanline(0)
-				end if
-			end if
-			lines += 1
-			nextLine += 113.67 --(lines+1)*113.67
-		end while
-		hblank = 1
-	end if
-	
-	if not in_vblank then
-		if hblank then
-			-- Process the message queue once per scanline
- 			while(PeekMessage(msg,hwnd,0,0,1)) do
-				TranslateMessage(msg)
-				DispatchMessage(msg)
-			end while
-		
-			
-			if sprite0 = -1 then
-				if not and_bits(peek(RAM+PPUSTAT),#40) then
-					if and_bits(peek(RAM+PPUCTR2),#10) then
-						if peek(SPRRAM)+1=lines then
-							-- Set sprite0 hit flag (temp. hack)
-							sprite0 = -2 --lines+3
-							--printf(1,"s %d\n",lines)
-							poke(RAM+PPUSTAT,or_bits(peek(RAM+PPUSTAT),#40))
-						end if
-					end if
-				end if
-			elsif sprite0 >= 0 then
-				if lines=sprite0 then
-					--printf(1,"sprite0 hit at line %d\n",lines)
-					poke(RAM+PPUSTAT,or_bits(peek(RAM+PPUSTAT),#40))
-					sprite0 = -2
-				end if
-			end if
-		end if
+    sprite0 = -1
 
-		if lines = 243 then 		
-			in_vblank = 1
-			sprite0 = -1
-			poke(RAM+PPUSTAT,or_bits(and_bits(peek(RAM+PPUSTAT),#BF),#80))
---			poke(RAM+PPUSTAT,or_bits(peek(RAM+PPUSTAT),#80))
-			
-			if frame=skip then
-				finish_screen()
-			end if
-			
-			-- Check if "execute nmi on vblank" is enabled
-			if and_bits(peek(RAM+PPUCTR1),#80) then
-				push(floor(and_bits(reg_PC,#FF00)/#100))
-				push(and_bits(reg_PC,#FF))
-				
-				--push(reg_P)
-				push_status()
-				
-				--reg_P = or_bits(reg_P,4)	-- Set 'interrupt' flag
-				--reg_P = and_bits(reg_P,#EF)	-- Clear 'break' flag
-				Interrupt = 1
-				Break = 0
-				
-				-- Read NMI vector
-				reg_PC = peek(PRGROM2+#3FFA)
-				reg_PC += peek(PRGROM2+#3FFB)*#100
+    while run do
+        --DEBUG
+        if showstate<25 then
+            mstate = disassemble(reg_PC,1)
+            puts(logfile,mstate[1][2])
+            printf(logfile,"\nA=%02xh, X=%02xh, Y=%02x, S=%02xh\n",{reg_A,reg_X,reg_Y,reg_S})
+            printf(logfile,"C=%d, Z=%d, V=%d, N=%d\n\n",{Carry,Zero,Overflow,Negative})
+            showstate += 1
+        end if
 
-				cycle += 7.0
-			end if
-		end if
+        execute()
+        hblank = 0
 
-	elsif lines = 262 then --cycle>=29780.67 then	
-		in_vblank = 0
-		poke(RAM+PPUSTAT,and_bits(peek(RAM+PPUSTAT),#7F))
-		if frame=skip then
-			--draw_frame()
-			--reset_screen()
-			--draw_scanline(0)
+        if cycle > nextLine then
+            -- HBLANK
+            while cycle > nextLine do
+                if frame = skip then
+                    if lines>1 then
+                        if lines<241 then --240 then
+                            draw_scanline(lines-1)
+                        end if
+                    else
+                        reset_screen()
+                        draw_scanline(0)
+                    end if
+                end if
+                lines += 1
+                nextLine += 113.67 --(lines+1)*113.67
+            end while
+            hblank = 1
+        end if
 
-			frame = 0
-		else
-			frame += 1
-		end if	
-		frames += 1
-		lines = 0
-		nextLine = 113.67
-		cycle += 7.0 - 29780.67
-		
-	end if
-	end while
+    if not in_vblank then
+        if hblank then
+            -- Process the message queue once per scanline
+            while(PeekMessage(msg, hwnd, 0, 0, 1)) do
+                TranslateMessage(msg)
+                DispatchMessage(msg)
+            end while
+
+            if sprite0 = -1 then
+                if not and_bits(peek(RAM+PPUSTAT),#40) then
+                    if and_bits(peek(RAM+PPUCTR2),#10) then
+                        if peek(SPRRAM)+1=lines then
+                            -- Set sprite0 hit flag (temp. hack)
+                            sprite0 = -2 --lines+3
+                            --printf(1,"s %d\n",lines)
+                            poke(RAM+PPUSTAT, or_bits(peek(RAM+PPUSTAT),#40))
+                        end if
+                    end if
+                end if
+            elsif sprite0 >= 0 then
+                if lines=sprite0 then
+                    --printf(1,"sprite0 hit at line %d\n",lines)
+                    poke(RAM+PPUSTAT, or_bits(peek(RAM+PPUSTAT),#40))
+                    sprite0 = -2
+                end if
+            end if
+        end if
+
+        if lines = 243 then
+            in_vblank = 1
+            sprite0 = -1
+            poke(RAM+PPUSTAT,or_bits(and_bits(peek(RAM+PPUSTAT),#BF),#80))
+--          poke(RAM+PPUSTAT,or_bits(peek(RAM+PPUSTAT),#80))
+
+            if frame=skip then
+                finish_screen()
+            end if
+
+            -- Check if "execute nmi on vblank" is enabled
+            if and_bits(peek(RAM+PPUCTR1), #80) then
+                push(floor(and_bits(reg_PC,#FF00)/#100))
+                push(and_bits(reg_PC,#FF))
+
+                --push(reg_P)
+                push_status()
+
+                --reg_P = or_bits(reg_P,4)	-- Set 'interrupt' flag
+                --reg_P = and_bits(reg_P,#EF)	-- Clear 'break' flag
+                Interrupt = 1
+                Break = 0
+
+                -- Read NMI vector
+                reg_PC = peek(PRGROM2+#3FFA)
+                reg_PC += peek(PRGROM2+#3FFB)*#100
+
+                cycle += 7.0
+            end if
+        end if
+
+    elsif lines = 262 then --cycle>=29780.67 then
+        in_vblank = 0
+        poke(RAM+PPUSTAT,and_bits(peek(RAM+PPUSTAT),#7F))
+        if frame=skip then
+            --draw_frame()
+            --reset_screen()
+            --draw_scanline(0)
+
+            frame = 0
+        else
+            frame += 1
+        end if
+        frames += 1
+        lines = 0
+        nextLine = 113.67
+        cycle += 7.0 - 29780.67
+
+    end if
+    end while
 end procedure
 
 
 
 
 procedure dump_nametable()
-	atom old_vscreen,vs
-	integer old_ppu1,old_ppu2,old_hScroll,old_vScroll,c
-	sequence pal2
-	
-	pal2 = palette
-	for i=0 to 15 do
-		c = and_bits(peek(VRAM+#3F00+i),#03F)
-		pal2[i+1] = reverse(palette[c+1])
-	end for
-	
-	old_vscreen = vscreen
-	old_ppu1 = peek(RAM+PPUCTR1)
-	old_ppu2 = peek(RAM+PPUCTR2)
-	old_hScroll = hScroll
-	old_vScroll = vScroll
-	
-	vs = allocate(256*960)
-	mem_set(vs,0,256*960)
-	
-	hScroll = 0
-	vScroll = 0
-	poke(RAM+PPUCTR1,0)
-	poke(RAM+PPUCTR2,10)
+    atom old_vscreen,vs
+    integer old_ppu1,old_ppu2,old_hScroll,old_vScroll,c
+    sequence pal2
 
-	vscreen = vs
-	for i=0 to 239 do
-		draw_scanline(i)
-	end for	
-	
-	poke(RAM+PPUCTR1,#10)
-	vscreen = vs+256*240
-	for i=0 to 239 do
-		draw_scanline(i)
-	end for	
+    pal2 = palette
+    for i = 0 to 15 do
+        c = and_bits(peek(VRAM+#3F00+i),#03F)
+        pal2[i+1] = reverse(palette[c+1])
+    end for
 
-	poke(RAM+PPUCTR1,1)
-	vscreen = vs+256*480
-	for i=0 to 239 do
-		draw_scanline(i)
-	end for	
+    old_vscreen = vscreen
+    old_ppu1 = peek(RAM+PPUCTR1)
+    old_ppu2 = peek(RAM+PPUCTR2)
+    old_hScroll = hScroll
+    old_vScroll = vScroll
 
-	poke(RAM+PPUCTR1,#11)
-	vscreen = vs+256*720
-	for i=0 to 239 do
-		draw_scanline(i)
-	end for	
+    vs = allocate(256*960)
+    mem_set(vs, 0, 256*960)
 
-	if SaveBitmap(".\\nametable.bmp",{vs,256,960,8,0,pal2},{vs,256,960,8,0,pal2}) then
-	end if
-	free(vs)
-	
-	vscreen = old_vscreen
-	hScroll = old_hScroll
-	vScroll = old_vScroll
-	poke(RAM+PPUCTR1,old_ppu1)
-	poke(RAM+PPUCTR2,old_ppu2)
+    hScroll = 0
+    vScroll = 0
+    poke(RAM+PPUCTR1, 0)
+    poke(RAM+PPUCTR2, 10)
+
+    vscreen = vs
+    for i = 0 to 239 do
+        draw_scanline(i)
+    end for
+
+    poke(RAM+PPUCTR1, #10)
+    vscreen = vs+256*240
+    for i = 0 to 239 do
+        draw_scanline(i)
+    end for
+
+    poke(RAM+PPUCTR1, 1)
+    vscreen = vs+256*480
+    for i = 0 to 239 do
+        draw_scanline(i)
+    end for
+
+    poke(RAM+PPUCTR1, #11)
+    vscreen = vs+256*720
+    for i = 0 to 239 do
+        draw_scanline(i)
+    end for
+
+    if SaveBitmap(".\\nametable.bmp",{vs,256,960,8,0,pal2},{vs,256,960,8,0,pal2}) then
+    end if
+    free(vs)
+
+    vscreen = old_vscreen
+    hScroll = old_hScroll
+    vScroll = old_vScroll
+    poke(RAM+PPUCTR1, old_ppu1)
+    poke(RAM+PPUCTR2, old_ppu2)
 end procedure
 
 
 
 procedure init_palette()
-	palette = {
-	  {117,117,117}, {039,027,143}, {000,000,171}, {071,000,159},
-	  {143,000,159}, {171,000,019}, {167,000,000}, {127,011,000},
-	  {067,047,000}, {000,071,000}, {000,081,000}, {000,063,023},
-	  {027,063,095}, {000,000,000}, {000,000,000}, {000,000,000},
-	
-	  {188,188,188}, {000,115,239}, {035,059,239}, {131,000,243},
-	  {191,000,191}, {231,000,091}, {219,043,000}, {203,079,015},
-	  {139,115,000}, {000,151,000}, {000,171,000}, {000,147,059},
-	  {000,131,139}, {000,000,000}, {000,000,000}, {000,000,000},
-	
-	  {255,255,255}, {063,191,255}, {095,151,255}, {167,139,253},
-	  {247,123,255}, {255,119,183}, {255,119,099}, {255,155,059},
-	  {243,191,063}, {131,211,019}, {079,223,075}, {088,248,152},
-	  {000,235,219}, {000,000,000}, {000,000,000}, {000,000,000},
-	
-	  {255,255,255}, {171,231,255}, {199,215,255}, {215,203,255},
-	  {255,199,255}, {255,199,219}, {255,191,179}, {255,219,171},
-	  {255,231,163}, {227,255,163}, {171,243,191}, {179,255,207},
-	  {159,255,243}, {000,000,000}, {000,000,000}, {000,000,000},
-	
-	  {000,000,000}, {000,255,000}, {000,000,255}, {255,000,000},
-	  {051,153,255}, {000,000,153}
-	} & repeat({0,0,0},256-70)	-- fill up the remaining colors
+    palette = {
+      {117,117,117}, {039,027,143}, {000,000,171}, {071,000,159},
+      {143,000,159}, {171,000,019}, {167,000,000}, {127,011,000},
+      {067,047,000}, {000,071,000}, {000,081,000}, {000,063,023},
+      {027,063,095}, {000,000,000}, {000,000,000}, {000,000,000},
 
-	poke(bi+RGBQUAD+(128*4),palette[65])
-	poke(bi+RGBQUAD+(129*4),palette[66])
-	poke(bi+RGBQUAD+(130*4),palette[67])
-	poke(bi+RGBQUAD+(131*4),palette[68])
+      {188,188,188}, {000,115,239}, {035,059,239}, {131,000,243},
+      {191,000,191}, {231,000,091}, {219,043,000}, {203,079,015},
+      {139,115,000}, {000,151,000}, {000,171,000}, {000,147,059},
+      {000,131,139}, {000,000,000}, {000,000,000}, {000,000,000},
 
+      {255,255,255}, {063,191,255}, {095,151,255}, {167,139,253},
+      {247,123,255}, {255,119,183}, {255,119,099}, {255,155,059},
+      {243,191,063}, {131,211,019}, {079,223,075}, {088,248,152},
+      {000,235,219}, {000,000,000}, {000,000,000}, {000,000,000},
 
-	for i=1 to length(palette) do
-		palette[i] = reverse(palette[i])	-- RGB -> BGR
-	end for
+      {255,255,255}, {171,231,255}, {199,215,255}, {215,203,255},
+      {255,199,255}, {255,199,219}, {255,191,179}, {255,219,171},
+      {255,231,163}, {227,255,163}, {171,243,191}, {179,255,207},
+      {159,255,243}, {000,000,000}, {000,000,000}, {000,000,000},
+
+      {000,000,000}, {000,255,000}, {000,000,255}, {255,000,000},
+      {051,153,255}, {000,000,153}
+    } & repeat({0,0,0},256-70)	-- fill up the remaining colors
+
+    poke(bi+RGBQUAD+(128*4), palette[65])
+    poke(bi+RGBQUAD+(129*4), palette[66])
+    poke(bi+RGBQUAD+(130*4), palette[67])
+    poke(bi+RGBQUAD+(131*4), palette[68])
+
+    for i = 1 to length(palette) do
+        palette[i] = reverse(palette[i])   -- RGB -> BGR
+    end for
 end procedure
 
 
 
 
 procedure reset_nes(integer hard)
-	if nChrPages then
-		init_pattern_table()
-	end if
-	
-	scrollList = repeat({240,0},240)
-	scrollLP = 0
-	in_vblank = 0
-	lines = 0
-	frameCycle = 7.0
-	frame = 0
-	--skip = 2
-	nextLine = 113.67
+    if nChrPages then
+        init_pattern_table()
+    end if
 
-	PATTBL0 = chrMem
-	PATTBL1 = chrMem+#1000
-	if mapper=0 then
-		PRGROM1 = prgMem
-		PRGROM2 = prgMem + (nPrgPages-1)*#4000
-	elsif mapper=1 then
-		PRGROM1 = prgMem
-		PRGROM2 = prgMem + (nPrgPages-1)*#4000
-		if not nChrPages then
-			PATTBL0 = VRAM
-			PATTBL1 = VRAM+#1000
-		end if
-	
-	elsif mapper=2 then
-		PRGROM1 = prgMem
-		PRGROM2 = prgMem + (nPrgPages-1)*#4000
-		PATTBL0 = VRAM
-		PATTBL1 = VRAM+#1000
-	
-	elsif mapper=3 then
-		PRGROM1 = prgMem
-		PRGROM2 = prgMem + (nPrgPages-1)*#4000
-	
-	elsif mapper=11 then
-		PRGROM1 = prgMem
-		PRGROM2 = PRGROM1+#4000
+    scrollList = repeat({240,0}, 240)
+    scrollLP = 0
+    in_vblank = 0
+    lines = 0
+    frameCycle = 7.0
+    frame = 0
+    --skip = 2
+    nextLine = 113.67
 
-	elsif mapper=66 then
-		PRGROM1 = prgMem
-		PRGROM2 = PRGROM1+#4000
-		
-	elsif mapper=71 then
-		PRGROM1 = prgMem
-		PRGROM2 = prgMem + (nPrgPages-1)*#4000
-		PATTBL0 = VRAM
-		PATTBL1 = VRAM+#1000	
-	end if
-	
-	refreshPatternTable = 1
-	poke(RAM+#2000,{0,0,0})
-	
-	if hard then
-		init_6502(memory)
-		reset_6502()
-	else
-		reset_memory()
-		reset_6502()
-	end if
-	printf(logfile,"\nStarting execution at $%04x\n\n",reg_PC)
+    PATTBL0 = chrMem
+    PATTBL1 = chrMem+#1000
+
+    if mapper = 0 then
+        PRGROM1 = prgMem
+        PRGROM2 = prgMem + (nPrgPages-1)*#4000
+
+    elsif mapper = 1 then
+        PRGROM1 = prgMem
+        PRGROM2 = prgMem + (nPrgPages-1)*#4000
+        if not nChrPages then
+            PATTBL0 = VRAM
+            PATTBL1 = VRAM+#1000
+        end if
+
+    elsif mapper = 2 then
+        PRGROM1 = prgMem
+        PRGROM2 = prgMem + (nPrgPages-1)*#4000
+        PATTBL0 = VRAM
+        PATTBL1 = VRAM+#1000
+
+    elsif mapper = 3 then
+        PRGROM1 = prgMem
+        PRGROM2 = prgMem + (nPrgPages-1)*#4000
+
+    elsif mapper = 11 then
+        PRGROM1 = prgMem
+        PRGROM2 = PRGROM1+#4000
+
+    elsif mapper = 66 then
+        PRGROM1 = prgMem
+        PRGROM2 = PRGROM1+#4000
+
+    elsif mapper = 71 then
+        PRGROM1 = prgMem
+        PRGROM2 = prgMem + (nPrgPages-1)*#4000
+        PATTBL0 = VRAM
+        PATTBL1 = VRAM+#1000
+    end if
+
+    refreshPatternTable = 1
+    poke(RAM+#2000, {0,0,0})
+
+    if hard then
+        init_6502(memory)
+        reset_6502()
+    else
+        reset_memory()
+        reset_6502()
+    end if
+    printf(logfile,"\nStarting execution at $%04x\n\n",reg_PC)
 end procedure
 
 
 
 procedure init()
-	logfile = open("neslog.txt","wb")
+    logfile = open("neslog.txt","wb")
 
-	sizeMultiplier = 1
-	--tiles = repeat(repeat(0,64),60)
-	--tileColor = repeat(0,16)
-	--spriteColor = repeat(0,16)
-	palette = repeat({0,0,0},256)
+    sizeMultiplier = 1
+    --tiles = repeat(repeat(0,64),60)
+    --tileColor = repeat(0,16)
+    --spriteColor = repeat(0,16)
+    palette = repeat({0,0,0},256)
 
-	chrMem = 0
-	prgMem = 0
-	
-     	-- Make room for one BITMAPINFOHEADER + 256 RGBQUAD structs
-        bi = allocate(SIZE_OF_BITMAPINFOHEADER + 1024)
+    chrMem = 0
+    prgMem = 0
+
+    -- Make room for one BITMAPINFOHEADER + 256 RGBQUAD structs
+    bi = allocate(SIZE_OF_BITMAPINFOHEADER + 1024)
         
-        vscreen = allocate(256*240)
-        patternTbl = allocate(#8000)
-        
-	-- Allocate 64k RAM+ROM, 16k VRAM and 256 bytes SPR-RAM
-	memory = allocate(#14100)
-	if memory<=0 or bi<=0 or vscreen<=0 or patternTbl<=0 then
-		puts(logfile,"Out of memory")
-		close(logfile)
-		abort(0)
-	end if
+    vscreen = allocate(256*240)
+    patternTbl = allocate(#8000)
 
-	-- Reset palette
-	mem_set(bi+RGBQUAD,#00,1024)
-	
-	mem_set(vscreen,0,256*240)
-	
-	--e6502_init(memory)
-	init_6502(memory)
-	
-	init_palette()
+    -- Allocate 64k RAM+ROM, 16k VRAM and 256 bytes SPR-RAM
+    memory = allocate(#14100)
+    if memory<=0 or bi<=0 or vscreen<=0 or patternTbl<=0 then
+        puts(logfile,"Out of memory")
+        close(logfile)
+        abort(0)
+    end if
 
-	--if not load_rom("castle.nes") then
-	--	puts(logfile,"Unable to load ROM")
-	--	close(logfile)
-	--	abort(0)
-	--end if
+    -- Reset palette
+    mem_set(bi+RGBQUAD,#00,1024)
 
-	--reset_nes(0)
-	
-	--puts(logfile,"ROM info:\n----------------\n")
-	--printf(logfile,"PRG-ROM pages: %d\nCHR-ROM pages: %d\nMirroring: %d\n",{nPrgPages,nChrPages,vramMirroring})
-	--printf(logfile,"Screen layout: %d\nMapper: %d\n",{iScreenLayout,mapper})
+    mem_set(vscreen,0,256*240)
+
+    init_6502(memory)
+
+    init_palette()
+
+    --reset_nes(0)
 end procedure
 
 
 
 procedure shut_down()
- 	if DestroyWindow(hwnd) then end if
-	if ReleaseDC(hwnd,dc) then end if
-	if DestroyWindow(hstatus) then end if
+    if DestroyWindow(hwnd) then end if
+    if ReleaseDC(hwnd,dc) then end if
+    if DestroyWindow(hstatus) then end if
 
-	chrMem = safe_free(chrMem)
-	prgMem = safe_free(prgMem)
-	vscreen = safe_free(vscreen)
-	memory = safe_free(memory)
-	bi = safe_free(bi)
-	patternTbl = safe_free(patternTbl)
-	
-	--puts(logfile,"Most executed instructions:\n")
-	--print_stats(logfile)
-	close(logfile)
+    chrMem = safe_free(chrMem)
+    prgMem = safe_free(prgMem)
+    vscreen = safe_free(vscreen)
+    memory = safe_free(memory)
+    bi = safe_free(bi)
+    patternTbl = safe_free(patternTbl)
+
+    --puts(logfile,"Most executed instructions:\n")
+    --print_stats(logfile)
+    close(logfile)
 end procedure
 
 
 
 procedure create_menu()
- 	menu = CreateMenu()
- 	
- 	-- Create popup menus 
- 	file_pop = CreatePopupMenu()
- 	nes_pop = CreatePopupMenu()
- 	video_pop = CreatePopupMenu()
- 		vsize_pop = CreatePopupMenu()
- 		skip_pop = CreatePopupMenu()
- 	debug_pop = CreatePopupMenu()
- 	help_pop = CreatePopupMenu()
+    menu = CreateMenu()
 
- 	AppendMenu(menu,{MF_ENABLED,MF_POPUP},file_pop,"File")
- 	AppendMenu(menu,{MF_ENABLED,MF_POPUP},nes_pop,"NES")
- 	AppendMenu(menu,{MF_ENABLED,MF_POPUP},video_pop,"Video")
- 	AppendMenu(menu,{MF_ENABLED,MF_POPUP},debug_pop,"Debug")
- 	AppendMenu(menu,{MF_ENABLED,MF_POPUP},help_pop,"Help")
+    -- Create popup menus
+    file_pop = CreatePopupMenu()
+    nes_pop = CreatePopupMenu()
+    video_pop = CreatePopupMenu()
+    vsize_pop = CreatePopupMenu()
+    skip_pop = CreatePopupMenu()
+    debug_pop = CreatePopupMenu()
+    help_pop = CreatePopupMenu()
 
- 	AppendMenu(file_pop,{MF_ENABLED,MF_STRING},IDM_LOAD,"Load ROM..")
- 	AppendMenu(file_pop,{MF_GRAYED,MF_STRING},IDM_INFO,"ROM info")
- 	AppendMenu(file_pop,MF_SEPARATOR,0,NULL)
- 	AppendMenu(file_pop,{MF_ENABLED,MF_STRING},IDM_EXIT,"Exit")
+    AppendMenu(menu, {MF_ENABLED,MF_POPUP}, file_pop, "File")
+    AppendMenu(menu, {MF_ENABLED,MF_POPUP}, nes_pop, "NES")
+    AppendMenu(menu, {MF_ENABLED,MF_POPUP}, video_pop, "Video")
+    AppendMenu(menu, {MF_ENABLED,MF_POPUP}, debug_pop, "Debug")
+    AppendMenu(menu, {MF_ENABLED,MF_POPUP}, help_pop, "Help")
 
- 	AppendMenu(nes_pop,{MF_ENABLED,MF_STRING},IDM_RUN,  "Run\t[F9]")
- 	AppendMenu(nes_pop,{MF_ENABLED,MF_STRING},IDM_PAUSE,"Pause\t[F10]")
- 	AppendMenu(nes_pop,{MF_ENABLED,MF_STRING},IDM_STOP, "Stop\t[F11]")
- 	AppendMenu(nes_pop,{MF_ENABLED,MF_STRING},IDM_RESET,"Reset\t[F12]")
+    AppendMenu(file_pop, {MF_ENABLED,MF_STRING}, IDM_LOAD, "Load ROM..")
+    AppendMenu(file_pop, {MF_GRAYED,MF_STRING}, IDM_INFO, "ROM info")
+    AppendMenu(file_pop, MF_SEPARATOR, 0, NULL)
+    AppendMenu(file_pop, {MF_ENABLED,MF_STRING}, IDM_EXIT, "Exit")
 
- 	AppendMenu(video_pop,{MF_ENABLED,MF_POPUP},vsize_pop,"Size")
-  		AppendMenu(vsize_pop,{MF_ENABLED,MF_UNCHECKED,MF_STRING},IDM_1X,"1x")
-  		AppendMenu(vsize_pop,{MF_ENABLED,MF_UNCHECKED,MF_STRING},IDM_2X,"2x")
-  		AppendMenu(vsize_pop,{MF_ENABLED,MF_UNCHECKED,MF_STRING},IDM_4X,"4x")
+    AppendMenu(nes_pop, {MF_ENABLED,MF_STRING}, IDM_RUN, "Run\t[F9]")
+    AppendMenu(nes_pop, {MF_ENABLED,MF_STRING}, IDM_PAUSE, "Pause\t[F10]")
+    AppendMenu(nes_pop, {MF_ENABLED,MF_STRING}, IDM_STOP, "Stop\t[F11]")
+    AppendMenu(nes_pop, {MF_ENABLED,MF_STRING}, IDM_RESET, "Reset\t[F12]")
 
- 	AppendMenu(video_pop,{MF_ENABLED,MF_POPUP},skip_pop,"Frame skip")
-		for i=0 to 7 do
-	  		AppendMenu(skip_pop,{MF_ENABLED,MF_UNCHECKED,MF_STRING},IDM_SKIP0+i,sprintf("%d",i))
-		end for
-		
- 	AppendMenu(help_pop,{MF_ENABLED,MF_STRING},IDM_ABOUT,"About")
- 	AppendMenu(help_pop,{MF_ENABLED,MF_STRING},IDM_README,"View readme")
+    AppendMenu(video_pop, {MF_ENABLED,MF_POPUP}, vsize_pop, "Size")
+    AppendMenu(vsize_pop, {MF_ENABLED,MF_UNCHECKED,MF_STRING}, IDM_1X, "1x")
+    AppendMenu(vsize_pop, {MF_ENABLED,MF_UNCHECKED,MF_STRING}, IDM_2X, "2x")
+    AppendMenu(vsize_pop, {MF_ENABLED,MF_UNCHECKED,MF_STRING}, IDM_4X, "4x")
+
+    AppendMenu(video_pop, {MF_ENABLED,MF_POPUP}, skip_pop, "Frame skip")
+    for i = 0 to 7 do
+        AppendMenu(skip_pop, {MF_ENABLED,MF_UNCHECKED,MF_STRING}, IDM_SKIP0+i, sprintf("%d",i))
+    end for
+
+    AppendMenu(help_pop, {MF_ENABLED,MF_STRING}, IDM_ABOUT, "About")
+    AppendMenu(help_pop, {MF_ENABLED,MF_STRING}, IDM_README, "View readme")
  
-  	SetMenu(hwnd,menu)
+    SetMenu(hwnd,menu)
 
-	if CheckMenuItem(menu,IDM_1X,MF_CHECKED) then end if
-	if CheckMenuItem(menu,IDM_SKIP0+1,MF_CHECKED) then end if
+    if CheckMenuItem(menu, IDM_1X, MF_CHECKED) then end if
+    if CheckMenuItem(menu, IDM_SKIP0, MF_CHECKED) then end if
 end procedure
 
 
 
 procedure create_window(sequence title,atom xdim,atom ydim,integer id)
-	atom wndProcAddr, class
+    atom wndProcAddr, class
 
- 	if (not hinst) then
-  		wc = allocate(SIZE_OF_WNDCLASS)
-  		rect = allocate(SIZE_OF_RECT)
-  		ps = allocate(SIZE_OF_PAINTSTRUCT)
-  	 	msg = allocate(SIZE_OF_MESSAGE)
-  		hinst = instance()
-  		wndProcAddr = call_back(id)
-  		poke(szAppName,"MumboJumbo" & 0)
-  		poke4(wc,{
-   			SIZE_OF_WNDCLASS,
-   			or_bits(CS_OWNDC,or_bits(CS_HREDRAW,CS_VREDRAW)),
-   			wndProcAddr,
-   			0,
-   			0,
-   			hinst,
-   			c_func(LoadIconC,{ NULL,IDI_EXCLAMATION }),
-   			c_func(LoadCursorC,{ NULL,IDC_ARROW }),
-   			c_func(GetStockObjectC, {BLACK_BRUSH}),
-   			NULL,
-   			szAppName,
-   			c_func(LoadIconC,{ NULL,IDI_EXCLAMATION })
-  		})
-  		class = RegisterClassEx(wc)
-  		if (not class) then
-   			if message_box("RegisterClassEx() failed.", "Error", or_bits(MB_OK,MB_ICONERROR)) then
-   			end if
-   			abort(1)
-  		end if
- 	end if
+    if (not hinst) then
+        wc = allocate(SIZE_OF_WNDCLASS)
+        rect = allocate(SIZE_OF_RECT)
+        ps = allocate(SIZE_OF_PAINTSTRUCT)
+        msg = allocate(SIZE_OF_MESSAGE)
+        hinst = instance()
+        wndProcAddr = call_back(id)
+        poke(szAppName, "MumboJumbo" & 0)
+        poke4(wc, {
+            SIZE_OF_WNDCLASS,
+            or_bits(CS_OWNDC,or_bits(CS_HREDRAW,CS_VREDRAW)),
+            wndProcAddr,
+            0,
+            0,
+            hinst,
+            c_func(LoadIconC,{ NULL,IDI_EXCLAMATION }),
+            c_func(LoadCursorC,{ NULL,IDC_ARROW }),
+            c_func(GetStockObjectC, {BLACK_BRUSH}),
+            NULL,
+            szAppName,
+            c_func(LoadIconC,{ NULL,IDI_EXCLAMATION })
+        })
+        class = RegisterClassEx(wc)
+        if (not class) then
+            if message_box("RegisterClassEx() failed.", "Error", or_bits(MB_OK,MB_ICONERROR)) then
+            end if
+            abort(1)
+        end if
+    end if
  
- 	poke(lpstr,title & 0)			
- 	hwnd = CreateWindow(
- 	{
-  		NULL, 
-  		szAppName,
-  		lpstr,
-  		or_bits(or_bits(or_bits(WS_OVERLAPPED,WS_CAPTION),or_bits(WS_SYSMENU,WS_THICKFRAME)),WS_MINIMIZEBOX),
-  		40, 40,
-  		xdim, ydim,
-  		NULL,
-  		NULL,
-  		hinst,
-  		NULL
- 	})
- 	if (not hwnd) then
-  		if message_box("CreateWindow() failed.", "Error", or_bits(MB_OK,MB_ICONERROR)) then
-  		end if
-  		abort(1)
- 	end if
- 	
-
+    poke(lpstr, title & 0)
+    hwnd = CreateWindow(
+    {
+        NULL,
+        szAppName,
+        lpstr,
+        or_bits(or_bits(or_bits(WS_OVERLAPPED,WS_CAPTION),or_bits(WS_SYSMENU,WS_THICKFRAME)),WS_MINIMIZEBOX),
+        40, 40,
+        xdim, ydim,
+        NULL,
+        NULL,
+        hinst,
+        NULL
+    })
+    if (not hwnd) then
+        if message_box("CreateWindow() failed.", "Error", or_bits(MB_OK,MB_ICONERROR)) then
+        end if
+        abort(1)
+    end if
 end procedure
 
 
@@ -1473,270 +1185,254 @@ end procedure
 constant sbsize = allocate(8)
 
 function wnd_proc(atom hWnd,atom iMsg,atom wParam,atom lParam)
-	integer fn,cmd,byte
-	sequence fname
-	atom fnamePtr,funcval
-	
-	if iMsg = WM_CREATE then
-		if c_func(SetTimerC,{hWnd, 777, 1000, NULL}) then end if
-		return 0
-		
- 	elsif iMsg =  WM_KEYDOWN then
-  		if wParam = VK_ESCAPE then
-   			if PostMessage( hWnd, WM_CLOSE, wParam, lParam ) then end if
- 			
-  		elsif wParam = 'X' then
-  			buttons[1] = 1
-  		elsif wParam = 'Z' then
-  			buttons[2] = 1
-  		elsif wParam = ' ' then
-  			buttons[3] = 1
-  		elsif wParam = 13 then
-  			buttons[4] = 1
-  		elsif wParam = 38 then
-  			buttons[5] = 1
-  		elsif wParam = 40 then
-  			buttons[6] = 1
-  		elsif wParam = 37 then
-  			buttons[7] = 1
-  		elsif wParam = 39 then
-  			buttons[8] = 1
+    integer fn, cmd, byte
+    sequence fname
+    atom fnamePtr, funcval
 
-		elsif wParam = 120 then		-- F9
-			if rom_loaded then
-				run = 1
-			end if
-			
- 		elsif wParam = 121 or wParam=122 then	-- F10,F11
-			run = 0
+    if iMsg = WM_CREATE then
+        if c_func(SetTimerC,{hWnd, 777, 1000, NULL}) then end if
+        return 0
+
+    elsif iMsg =  WM_KEYDOWN then
+        if wParam = VK_ESCAPE then
+            if PostMessage( hWnd, WM_CLOSE, wParam, lParam ) then end if
+        elsif wParam = 'X' then
+            buttons[1] = 1
+        elsif wParam = 'Z' then
+            buttons[2] = 1
+        elsif wParam = ' ' then
+            buttons[3] = 1
+        elsif wParam = 13 then
+            buttons[4] = 1
+        elsif wParam = 38 then
+            buttons[5] = 1
+        elsif wParam = 40 then
+            buttons[6] = 1
+        elsif wParam = 37 then
+            buttons[7] = 1
+        elsif wParam = 39 then
+            buttons[8] = 1
+
+        elsif wParam = 120 then  -- F9
+            if rom_loaded then
+                run = 1
+            end if
+
+        elsif wParam = 121 or wParam=122 then  -- F10,F11
+            run = 0
  
- 		elsif wParam = 123 then		-- F12
- 			if rom_loaded then
-	 			reset_nes(0)
-			end if
-			return 0
-			
-  		elsif wParam = 'D' then
-  			dis = disassemble(reg_PC,5)
-			for i=1 to length(dis) do
-				printf(1,"%04x: ",dis[i][1])
-				puts(1,dis[i][2]&"\n")
-			end for
+        elsif wParam = 123 then  -- F12
+            if rom_loaded then
+                reset_nes(0)
+            end if
+            return 0
 
-			printf(1,"\nA=%02xh, X=%02xh, P=%02x, S=%02xh\n",{reg_A,reg_X,reg_P,reg_S})
-			printf(1,"PPUCTR1 = %02x\nPPUCTR2 = %02x\nPPUSTAT = %02x\n",
-			         peek({RAM+#2000,3}))
-			--puts(1,"PPU regs:\n")
-			--memdump(1,#2000,8,8)
-			puts(1,"Pal:\n")
-			memdump(1,#3F00,24,32)
-			
-		elsif wParam = 'N' then
-			--fn = open("nametable.bin","wb")
-			--for i=0 to #3BF do
-			--	puts(fn,peek(VRAM+#2000+i))
-			--end for
-			--close(fn)
-			dump_nametable()
+        elsif wParam = 'D' then
+            dis = disassemble(reg_PC,5)
+            for i = 1 to length(dis) do
+                printf(1, "%04x: ", dis[i][1])
+                puts(1, dis[i][2]&"\n")
+            end for
+            printf(1, "\nA=%02xh, X=%02xh, P=%02x, S=%02xh\n", {reg_A,reg_X,reg_P,reg_S})
+            printf(1, "PPUCTR1 = %02x\nPPUCTR2 = %02x\nPPUSTAT = %02x\n", peek({RAM+#2000,3}))
+            puts(1,"Palette:\n")
+            memdump(1,#3F00,24,32)
 
-		elsif wParam = 'A' then
-			--fn = open("attributetable.bin","wb")
-			--for i=0 to 59 do
-			--	puts(fn,peek(VRAM+#23C0+i))
-			--end for
-			--close(fn)
+        elsif wParam = 'N' then
+            dump_nametable()
 
-		elsif wParam = 'P' then
-			--fn = open("patterntable.bin","wb")
-			--for i=0 to #7FFF do
-			--	puts(fn,peek(patternTbl+i))
-			--end for
-			--close(fn)
-			dump_patterntable()
-			
-  		end if
-  		return 0
+        elsif wParam = 'A' then
+            --fn = open("attributetable.bin","wb")
+            --for i=0 to 59 do
+            --	puts(fn,peek(VRAM+#23C0+i))
+            --end for
+            --close(fn)
+
+        elsif wParam = 'P' then
+            dump_patterntable()
+
+        end if
+        return 0
  
- 	elsif iMsg =  WM_KEYUP then
-  		if wParam = 'X' then
-  			buttons[1] = 0
-  		elsif wParam = 'Z' then
-  			buttons[2] = 0
-  		elsif wParam = ' ' then
-  			buttons[3] = 0
-  		elsif wParam = 13 then
-  			buttons[4] = 0
-  		elsif wParam = 38 then
-  			buttons[5] = 0
-  		elsif wParam = 40 then
-  			buttons[6] = 0
-  		elsif wParam = 37 then
-  			buttons[7] = 0
-  		elsif wParam = 39 then
-  			buttons[8] = 0
-  		end if
-  		return 0
+    elsif iMsg =  WM_KEYUP then
+        switch wParam do
+            case 'X' then
+                buttons[1] = 0
+            case 'Z' then
+                buttons[2] = 0
+            case ' ' then
+                buttons[3] = 0
+            case 13 then
+                buttons[4] = 0
+            case 38 then
+                buttons[5] = 0
+            case 40 then
+                buttons[6] = 0
+            case 37 then
+                buttons[7] = 0
+            case 39 then
+                buttons[8] = 0
+        end switch
+        return 0
 
-	elsif iMsg = WM_COMMAND then
-    		cmd = LOWORD(wParam)
+    elsif iMsg = WM_COMMAND then
+        cmd = LOWORD(wParam)
 
-    		if cmd = IDM_LOAD then
-    			poke(lpstr,".\\"&0)
-     			mem_set(ofn,0,SIZE_OF_OPENFILENAME)
-     			poke4(ofn + ofn_lStructSize,SIZE_OF_OPENFILENAME)
-     			poke4(ofn + ofn_hwndOwner,hwnd)
-     			poke4(ofn + ofn_lpstrFilter,szOfnFilter)
-     			poke4(ofn + ofn_nFilterIndex,1)
-     			poke4(ofn + ofn_lpstrFile,szOfnFileName)
-     			poke4(ofn + ofn_nMaxFile,256)
-     			poke4(ofn + ofn_lpstrInitialDir,lpstr)
-     			poke4(ofn + ofn_lpstrTitle,szOfnTitle)
-     			poke4(ofn + ofn_Flags,or_bits(OFN_EXPLORER,OFN_FILEMUSTEXIST))
-     			funcval = c_func(GetOpenFileNameC,{ ofn })
-     			if funcval then
-       				fnamePtr = peek4u(ofn + ofn_lpstrFile)
-       				fname = {}
-       				byte = 1
-       				while byte do
-       					byte = peek(fnamePtr)
-       	 				if byte then
-         					fname &= byte
-         					fnamePtr += 1 
-        				end if
-       				end while
-       				
-       				run = load_rom(fname)
-       				if run then
-	       				if c_func(EnableMenuItemC,{menu,IDM_INFO,0}) then end if
-       					reset_nes(1)
-       				end if
-       			end if
-       			
-       		
-       		elsif cmd = IDM_INFO then
-       			if rom_loaded then
-				if message_box(	sprintf("PRG-ROM pages: %d\nCHR-ROM pages: %d\nMirroring: %d\nMapper: %d",
-		       				        {nPrgPages,nChrPages,vramMirroring,mapper}),
-		       				"ROM info",MB_OK) then end if
-		       	end if
-			
-		elsif cmd = IDM_EXIT then
-   			if PostMessage(hWnd,WM_CLOSE,wParam,lParam) then end if
-		
-		elsif cmd = IDM_RUN then
-			run = rom_loaded
-			
-		elsif cmd = IDM_PAUSE then
-			run = 0
-		elsif cmd = IDM_STOP then
-			run = 0
-		elsif cmd = IDM_RESET then
-			if rom_loaded then
-				reset_nes(0)
-			end if
-		
-		-- Video size doesn't work atm
-		elsif cmd>=IDM_1X and cmd<=IDM_4X then
-			sizeMultiplier = cmd+1-IDM_1X
-			for i=0 to 3 do
-				if i=cmd-IDM_1X then
-					if CheckMenuItem(menu,IDM_1X+i,MF_CHECKED) then end if
-				else
-					if CheckMenuItem(menu,IDM_1X+i,MF_UNCHECKED) then end if
-				end if
-			end for
-			if sizeMultiplier=3 then
-				sizeMultiplier = 4
-			end if
-			--SendMessage(hwnd, WM_SIZE, 256*sizeMultiplier + 8,
-			--                           240*sizeMultiplier + 20 + 28 + 20)
+        if cmd = IDM_LOAD then
+            poke(lpstr, ".\\"&0)
+            mem_set(ofn, 0, SIZE_OF_OPENFILENAME)
+            poke4(ofn + ofn_lStructSize,SIZE_OF_OPENFILENAME)
+            poke4(ofn + ofn_hwndOwner,hwnd)
+            poke4(ofn + ofn_lpstrFilter,szOfnFilter)
+            poke4(ofn + ofn_nFilterIndex,1)
+            poke4(ofn + ofn_lpstrFile,szOfnFileName)
+            poke4(ofn + ofn_nMaxFile,256)
+            poke4(ofn + ofn_lpstrInitialDir,lpstr)
+            poke4(ofn + ofn_lpstrTitle,szOfnTitle)
+            poke4(ofn + ofn_Flags,or_bits(OFN_EXPLORER,OFN_FILEMUSTEXIST))
+            funcval = c_func(GetOpenFileNameC,{ ofn })
+            if funcval then
+                fnamePtr = peek4u(ofn + ofn_lpstrFile)
+                fname = {}
+                byte = 1
+                while byte do
+                    byte = peek(fnamePtr)
+                    if byte then
+                        fname &= byte
+                        fnamePtr += 1
+                    end if
+                end while
 
-		elsif cmd>=IDM_SKIP0 and cmd<=IDM_SKIP7 then
-			skip = cmd-IDM_SKIP0
-			frame = 0
-			for i=0 to 7 do
-				if i=cmd-IDM_SKIP0 then
-					if CheckMenuItem(menu,IDM_SKIP0+i,MF_CHECKED) then end if
-				else
-					if CheckMenuItem(menu,IDM_SKIP0+i,MF_UNCHECKED) then end if
-				end if
-			end for
-			
-		elsif cmd = IDM_ABOUT then
-			if message_box("         Eutendo\n  - 8 bits of Euphoria -   \n\n         Mic, 2003",
-			               "About",MB_OK) then end if
-	
-		elsif cmd = IDM_README then
-			if ShellExecute(hwnd,0,"readme.txt",0,".\\",SW_SHOW) then end if
-		end if
-		return 0
-		
-		
-	elsif iMsg = WM_SIZE then
-		if hstatus then
-	            	poke4(sbsize,LOWORD(lParam)-200)
-	            	poke4(sbsize+4,LOWORD(lParam))
-	            	SendMessage(hstatus, #404, 2, sbsize)
-	            	SendMessage(hstatus, WM_SIZE, wParam, lParam)
-		end if
-		return 0
-	
-	elsif iMsg = WM_TIMER then
-		if wParam=777 then
-			poke(lpstr,sprintf("%d fps   ",frames)&0)
-			SendMessage(hstatus,#401,0,lpstr)
-			frames = 0
-		end if
-		return 0
-		
- 	elsif iMsg = WM_CLOSE then
-  		run = 0
-  		quit = 1
-  		return 0
+                run = load_rom(fname)
+                if run then
+                    if c_func(EnableMenuItemC, {menu,IDM_INFO,0}) then end if
+                    reset_nes(1)
+                end if
+            end if
+
+       elsif cmd = IDM_INFO then
+           if rom_loaded then
+               if message_box(sprintf("PRG-ROM pages: %d\nCHR-ROM pages: %d\nMirroring: %d\nMapper: %d",
+                              {nPrgPages,nChrPages,vramMirroring,mapper}),
+                              "ROM info",MB_OK) then end if
+            end if
+
+        elsif cmd = IDM_EXIT then
+            if PostMessage(hWnd,WM_CLOSE,wParam,lParam) then end if
+
+        elsif cmd = IDM_RUN then
+            run = rom_loaded
+
+        elsif cmd = IDM_PAUSE then
+            run = 0
+        elsif cmd = IDM_STOP then
+            run = 0
+        elsif cmd = IDM_RESET then
+            if rom_loaded then
+                reset_nes(0)
+            end if
+
+        -- Video size doesn't work atm
+        elsif cmd >= IDM_1X and cmd <= IDM_4X then
+            sizeMultiplier = cmd+1-IDM_1X
+            for i = 0 to 3 do
+                if i = cmd-IDM_1X then
+                    if CheckMenuItem(menu,IDM_1X+i,MF_CHECKED) then end if
+                else
+                    if CheckMenuItem(menu,IDM_1X+i,MF_UNCHECKED) then end if
+                end if
+            end for
+            if sizeMultiplier = 3 then
+                sizeMultiplier = 4
+            end if
+            --SendMessage(hwnd, WM_SIZE, 256*sizeMultiplier + 8,
+            --                           240*sizeMultiplier + 20 + 28 + 20)
+
+        elsif cmd >= IDM_SKIP0 and cmd <= IDM_SKIP7 then
+            skip = cmd-IDM_SKIP0
+            frame = 0
+            for i = 0 to 7 do
+                if i = cmd-IDM_SKIP0 then
+                    if CheckMenuItem(menu,IDM_SKIP0+i,MF_CHECKED) then end if
+                else
+                    if CheckMenuItem(menu,IDM_SKIP0+i,MF_UNCHECKED) then end if
+                end if
+            end for
+
+        elsif cmd = IDM_ABOUT then
+            if message_box("         Eutendo\n  - 8 bits of Euphoria -   \n\n      Mic, 2003,2019",
+                "About",MB_OK) then end if
+
+        elsif cmd = IDM_README then
+            if ShellExecute(hwnd,0,"readme.txt",0,".\\",SW_SHOW) then end if
+        end if
+        return 0
+
+    elsif iMsg = WM_SIZE then
+        if hstatus then
+            poke4(sbsize,LOWORD(lParam)-200)
+            poke4(sbsize+4,LOWORD(lParam))
+            SendMessage(hstatus, #404, 2, sbsize)
+            SendMessage(hstatus, WM_SIZE, wParam, lParam)
+        end if
+        return 0
+
+    elsif iMsg = WM_TIMER then
+        if wParam = 777 then
+            poke(lpstr, sprintf("%d fps   ",frames)&0)
+            SendMessage(hstatus, #401, 0, lpstr)
+            frames = 0
+        end if
+        return 0
+
+    elsif iMsg = WM_CLOSE then
+        run = 0
+        quit = 1
+        return 0
  
- 	elsif iMsg = WM_DESTROY then
- 		puts(logfile,"KillTimer\n")
- 		c_proc(KillTimerC,{hWnd,777})
-  		PostQuitMessage(0)
-  		return 0
- 	end if
+    elsif iMsg = WM_DESTROY then
+        puts(logfile,"KillTimer\n")
+        c_proc(KillTimerC,{hWnd,777})
+        PostQuitMessage(0)
+        return 0
+    end if
  
- 	return DefWindowProc(hWnd,iMsg,wParam,lParam)
+    return DefWindowProc(hWnd,iMsg,wParam,lParam)
 end function
 
 
 
 procedure main()
-	integer keepRocking
+    integer keepRocking
 
- 	create_window("Eutendo",264,240+20+28+20,routine_id("wnd_proc"))
- 	ShowWindow(hwnd,SW_SHOW)
+    create_window("Eutendo", 264 + 8, 240+20+28+20 + 10, routine_id("wnd_proc"))
+    ShowWindow(hwnd,SW_SHOW)
 
- 	hstatus = CreateStatusWindow(#50000103,"",hwnd,555)
- 	if (not hstatus) then
-  		if message_box("CreateStatusWindow() failed.", "Error", or_bits(MB_OK,MB_ICONERROR)) then
-  		end if
-  		abort(1)
- 	end if
- 	create_menu()
-       	SendMessage(hwnd, WM_SIZE, 264, 240+20+28+20)
+    hstatus = CreateStatusWindow(#50000103, "", hwnd, 555)
+    if (not hstatus) then
+        if message_box("CreateStatusWindow() failed.", "Error", or_bits(MB_OK,MB_ICONERROR)) then
+        end if
+        abort(1)
+    end if
+    create_menu()
+    SendMessage(hwnd, WM_SIZE, 264, 240+20+28+20)
  
-  	dc = GetDC(hwnd)
+    dc = GetDC(hwnd)
 
- 	init() 
+    init()
 end procedure
 
 
 procedure idle()
-	poke(lpstr,"Idle"&0)
-	SendMessage(hstatus,#401,1,lpstr)
+    poke(lpstr, "Idle"&0)
+    SendMessage(hstatus, #401, 1, lpstr)
 
-	while not run and not quit do
-		while(PeekMessage(msg,hwnd,0,0,1)) do
-			TranslateMessage(msg)
-			DispatchMessage(msg)
-		end while
-	end while
+    while (not run) and (not quit) do
+        while(PeekMessage(msg, hwnd, 0, 0, 1)) do
+            TranslateMessage(msg)
+            DispatchMessage(msg)
+        end while
+    end while
 end procedure
 
 
@@ -1750,10 +1446,9 @@ skip = 1
 
 main()
 
-
 while not quit do
-	idle()
-	emulate()
+    idle()
+    emulate()
 end while
 
 shut_down()
