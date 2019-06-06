@@ -27,6 +27,7 @@ include 6502.e
 include debug.e
 include beeampee4.ew
 include std/os.e
+include std/sequence.e
 
 constant lpstr = allocate(65),
          szAppName = allocate(65),
@@ -137,37 +138,34 @@ end function
 
 
 function load_rom(sequence fname)
-    integer fn,tmp,ch
-    sequence sig
-
-    fn = open(fname, "rb")
-    if fn=-1 then
+    integer fn = open(fname, "rb")
+    if fn = -1 then
         return 0
     end if
 
-    sig = get_bytes(fn, 3)
+    sequence sig = get_bytes(fn, 3)
     if not equal(sig, "NES") then
         close (fn)
         puts(1, "Not a valid iNES file\n")
         return 0
     end if
 
-    tmp = getc(fn)
+    getc(fn)    -- skip remaining signature byte
     nPrgPages = getc(fn)
     nChrPages = getc(fn)
 
-    tmp = getc(fn)
-    ch = getc(fn)
+    integer flags6 = getc(fn)
+    integer flags7 = getc(fn)
 
-    vramMirroring = and_bits(tmp, 1)
-    iScreenLayout = and_bits(tmp, 8)
-    mapper = and_bits(tmp, #F0)
-    mapper = floor(mapper/16) + and_bits(ch, #F0)
+    vramMirroring = and_bits(flags6, 1)
+    iScreenLayout = and_bits(flags6, 8)
+    mapper = and_bits(flags6, #F0)
+    mapper = floor(mapper / 16) + and_bits(flags7, #F0)
 
     if iScreenLayout then
         puts(1, "4-screen\n")
         ntmirrors = {#2000,#2400,#2800,#2C00}
-    elsif vramMirroring=HORIZONTAL then
+    elsif vramMirroring = HORIZONTAL then
         ntmirrors = {#2000,#2000,#2400,#2400}
     else
         ntmirrors = {#2000,#2400,#2000,#2400}
@@ -300,14 +298,8 @@ function load_rom(sequence fname)
 
     close(fn)
 
-    tmp = 1
-    for i = length(fname) to 1 by -1 do
-        if fname[i]='\\' then
-            tmp = i+1
-            exit
-        end if
-    end for
-    SetWindowText(hwnd, "Eutendo - "&fname[tmp..length(fname)])
+    sequence fname_splits = stdseq:split(fname, '\\')
+    SetWindowText(hwnd, "Eutendo - " & fname_splits[$])
 
     rom_loaded = 1
     return 1
