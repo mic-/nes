@@ -128,27 +128,12 @@ function get_bytes(integer fn, integer count)
 end function
 
 
-
-procedure poke_word(atom dest,object word)
-    if sequence(word) then
-        for i=1 to length(word) do
-            poke(dest+((i-1)*2), and_bits(word[i],#00FF))
-            poke(dest+((i-1)*2)+1, floor(and_bits(word[i],#FF00)/256))
-        end for
-    else
-        poke(dest, and_bits(word,#00FF))
-        poke(dest+1, floor(and_bits(word,#FF00) / 256))
-    end if
-end procedure
-
-
 function safe_free(atom a)
     if a>0 then
         free(a)
     end if
     return 0
 end function
-
 
 
 function load_rom(sequence fname)
@@ -566,8 +551,8 @@ procedure finish_screen()
     poke4(bi + BITMAPINFOHEADER + biSize, SIZE_OF_BITMAPINFOHEADER)
     poke4(bi + BITMAPINFOHEADER + biWidth, 256)
     poke4(bi + BITMAPINFOHEADER + biHeight, -240)
-    poke_word(bi + BITMAPINFOHEADER + biPlanes, 1)
-    poke_word(bi + BITMAPINFOHEADER + biBitCount, 8)
+    poke2(bi + BITMAPINFOHEADER + biPlanes, 1)
+    poke2(bi + BITMAPINFOHEADER + biBitCount, 8)
     -- the RGBQUAD entries contains explicit RGB values (actually BGRX..)
     poke4(bi + BITMAPINFOHEADER + biCompression, BI_RGB)
  
@@ -1186,9 +1171,7 @@ end procedure
 constant sbsize = allocate(8)
 
 function wnd_proc(atom hWnd,atom iMsg,atom wParam,atom lParam)
-    integer fn, cmd, byte
-    sequence fname
-    atom fnamePtr, funcval
+    integer fn
 
     if iMsg = WM_CREATE then
         if c_func(SetTimerC,{hWnd, 777, 1000, NULL}) then end if
@@ -1277,7 +1260,7 @@ function wnd_proc(atom hWnd,atom iMsg,atom wParam,atom lParam)
         return 0
 
     elsif iMsg = WM_COMMAND then
-        cmd = LOWORD(wParam)
+        integer cmd = LOWORD(wParam)
 
         if cmd = IDM_LOAD then
             poke(lpstr, ".\\"&0)
@@ -1291,19 +1274,9 @@ function wnd_proc(atom hWnd,atom iMsg,atom wParam,atom lParam)
             poke4(ofn + ofn_lpstrInitialDir,lpstr)
             poke4(ofn + ofn_lpstrTitle,szOfnTitle)
             poke4(ofn + ofn_Flags,or_bits(OFN_EXPLORER,OFN_FILEMUSTEXIST))
-            funcval = c_func(GetOpenFileNameC,{ ofn })
+            atom funcval = c_func(GetOpenFileNameC,{ ofn })
             if funcval then
-                fnamePtr = peek4u(ofn + ofn_lpstrFile)
-                fname = {}
-                byte = 1
-                while byte do
-                    byte = peek(fnamePtr)
-                    if byte then
-                        fname &= byte
-                        fnamePtr += 1
-                    end if
-                end while
-
+                sequence fname = peek_string(peek4u(ofn + ofn_lpstrFile))
                 run = load_rom(fname)
                 if run then
                     if c_func(EnableMenuItemC, {menu,IDM_INFO,0}) then end if
