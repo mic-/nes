@@ -26,6 +26,7 @@ include file.e
 include 6502.e
 include debug.e
 include beeampee4.ew
+include std/os.e
 
 constant lpstr = allocate(65),
          szAppName = allocate(65),
@@ -1432,6 +1433,7 @@ procedure idle()
             TranslateMessage(msg)
             DispatchMessage(msg)
         end while
+        os:sleep(1 / 60)
     end while
 end procedure
 
